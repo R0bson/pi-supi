@@ -27,10 +27,10 @@ Check for available upgrades to the pi coding agent framework and generate actio
 
 ```bash
 # Preview what would change (no files modified)
-bash "${CLAUDE_PLUGIN_ROOT:-skills/pi-upgrade}/scripts/check-pi-version" --dry-run [path/to/package.json]
+bash "<skill-dir>/scripts/check-pi-version" --dry-run [path/to/package.json]
 
 # Bump versions, migrate legacy names, install, and report
-bash "${CLAUDE_PLUGIN_ROOT:-skills/pi-upgrade}/scripts/check-pi-version" [path/to/package.json]
+bash "<skill-dir>/scripts/check-pi-version" --apply [path/to/package.json]
 ```
 
 ## Package mapping
@@ -50,18 +50,19 @@ bash "${CLAUDE_PLUGIN_ROOT:-skills/pi-upgrade}/scripts/check-pi-version" [path/t
 | Field | Description |
 |---|---|
 | `current` | Detected current version |
-| `currentSource` | Where the version was found (`package-range`, `lockfile`, or `node_modules`) |
+| `currentSource` | Where the version was found (`workspace-override`, `package-range`, `lockfile`, or `node_modules`) |
 | `depName` | Detected package name |
 | `depField` | Dependency field containing the package |
 | `depRange` | Original version range from `package.json` |
 | `latest` | Latest available release tag |
 | `upToDate` | `true` if no newer releases exist |
 | `newerReleases` | Releases between current and latest, with `tagName`, `name`, `body`, `publishedAt` |
-| `bumpedFiles` | Workspace `package.json` files changed by the helper |
+| `bumpedFiles` | Manifest and workspace override files changed by the helper |
 | `bumpChanges` | Per-file changes with `field`, `package`, optional `packageFrom`, `old`, and `new` |
 | `updatePackages` | Canonical pi packages detected in the workspace |
 | `installCommand` | The package manager command that was (or would be) run |
-| `installExitCode` | Exit code of the install step |
+| `installExitCode` | Non-zero if install, dedupe, or version verification fails |
+| `resolvedVersions` | Installed Pi versions checked after install; empty in dry-run |
 | `installOutput` | Stdout+stderr from install |
 
 ## File structure
@@ -81,5 +82,18 @@ pi-upgrade/
 - **Monorepo aware** — auto-discovers workspace packages and bumps all of them
 - **Legacy migration aware** — automatically rewrites `@mariozechner/pi-*` entries to `@earendil-works/pi-*`
 - **Respects version pinning** — preserves `~`, `^`, `>=` prefixes; `peerDependencies` for pi packages are set to `*`
-- **Pre-release safe** — if the latest release is a pre-release, the helper will flag it and suggest the latest stable instead
 - **Idempotent** — safe to re-run; no-op if already up to date
+
+## Workspace overrides
+
+The helper updates existing direct `@earendil-works/pi-*`, legacy
+`@mariozechner/pi-*`, and `@earendil-works/chord` overrides together. It does not
+add overrides. Use a block mapping with scalar versions in `pnpm-workspace.yaml`.
+Pi selectors and alias values need manual review; the helper stops before edits
+when it finds them. Other YAML settings and comments stay unchanged.
+
+Dry-run includes override changes in `bumpChanges`. Apply sets these overrides
+to the target release, then installs and checks installed Pi dependencies.
+A successful install alone does not prove that old pins were removed. A version
+mismatch returns a non-zero exit code and includes the error in `installOutput`.
+Failed apply can leave changed files; review them before you retry.

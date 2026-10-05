@@ -28,14 +28,16 @@ The bundled helper (`scripts/check-pi-version`) handles the mechanical work:
 - Detects the current pi package version from `package.json`, lockfiles, or
   `node_modules`
 - Fetches release delta from `earendil-works/pi` via `gh`
-- Bumps version ranges across workspace `package.json` files
+- Updates version ranges across workspace `package.json` files
+- Updates existing Pi overrides in `pnpm-workspace.yaml`, including `@earendil-works/chord`
+- Keeps Pi peer dependencies at `*` and preserves manifest range prefixes
 - Migrates `@mariozechner/pi-*` entries to `@earendil-works/pi-*`
 - Runs the detected package manager install
 - Returns structured JSON with the current version, latest version, release
   notes, bumped files, and install status
 
-**Dry-run is the default recommendation.** The helper applies changes when run
-without `--dry-run`, so ask the user which mode to use before invoking it.
+**Dry-run is the default.** Use `--apply` only after the user approves the upgrade.
+A request to edit this skill or its helper is not approval to upgrade Pi.
 
 Resolve `scripts/check-pi-version` relative to this `SKILL.md` file's directory;
 do not assume the target project contains `.pi/skills/pi-upgrade`.
@@ -45,7 +47,7 @@ do not assume the target project contains `.pi/skills/pi-upgrade`.
 bash "<skill-dir>/scripts/check-pi-version" --dry-run [path/to/package.json]
 
 # Bump + install + report (only after the user chooses direct apply)
-bash "<skill-dir>/scripts/check-pi-version" [path/to/package.json]
+bash "<skill-dir>/scripts/check-pi-version" --apply [path/to/package.json]
 ```
 
 ## What YOU do after the helper runs
@@ -89,19 +91,21 @@ dry-run does not install anything, so local docs and type definitions may still 
 from the old version.
 
 After the preview, ask whether the user wants to apply the upgrade. If they
-confirm, rerun the helper without `--dry-run`, then continue with the installed-doc
+confirm, rerun the helper with `--apply`, then continue with the installed-doc
 analysis below. If they decline, stop after the preview.
 
 #### If direct apply was selected
 
 The helper bumps package ranges and runs install immediately. If `installExitCode`
 is non-zero, surface `installOutput` and stop; the latest docs may not be present.
-If install succeeds, continue with the installed-doc analysis below.
+Continue only when install and resolved-version checks succeed. Check
+`resolvedVersions` before reading the new docs.
 
 ### Step 4: Read the newly installed pi docs
 
 After the helper succeeds with `applied: true` and `installExitCode: 0`, the
-latest pi docs are available in `node_modules/`.
+resolved versions must match the target release in `resolvedVersions`.
+Only then read the docs in `node_modules/`.
 
 - Prefer `node_modules/@earendil-works/pi-coding-agent/README.md` and `docs/*.md`
 - If the project is still on the deprecated scope during an in-progress migration,
@@ -143,3 +147,17 @@ After presenting the report, ask what the user wants to do next:
 - If `gh` is missing, ask the user to install and authenticate it.
 - For private forks/mirrors, ask for the repo override before editing the helper.
 - If install fails, surface `installOutput` and `installExitCode`.
+
+## Workspace overrides
+
+The helper updates existing direct `@earendil-works/pi-*`, legacy
+`@mariozechner/pi-*`, and `@earendil-works/chord` overrides together. It does not
+add overrides. Use a block mapping with scalar versions in `pnpm-workspace.yaml`.
+Pi selectors and alias values need manual review; the helper stops before edits
+when it finds them. Other YAML settings and comments stay unchanged.
+
+Dry-run includes override changes in `bumpChanges`. Apply sets these overrides
+to the target release, then installs and checks installed Pi dependencies.
+A successful install alone does not prove that old pins were removed. A version
+mismatch returns a non-zero exit code and includes the error in `installOutput`.
+Failed apply can leave changed files; review them before you retry.

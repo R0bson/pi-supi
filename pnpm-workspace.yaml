@@ -2,6 +2,18 @@ packages:
   - "packages/*"
 nodeLinker: hoisted
 
+# Upgrade these pins together after a manual Pi review. Keep published peers at '*'.
+# These overrides prevent Pi updates during full lock-file maintenance.
+overrides:
+  '@earendil-works/chord': 1.0.0
+  '@earendil-works/pi-agent-core': 1.0.0
+  '@earendil-works/pi-ai': 1.0.0
+  '@earendil-works/pi-codemode': 1.0.0
+  '@earendil-works/pi-coding-agent': 1.0.0
+  '@earendil-works/pi-mcp': 1.0.0
+  '@earendil-works/pi-telemetry': 1.0.0
+  '@earendil-works/pi-tui': 1.0.0
+
 peerDependencyRules:
   allowAny:
     - tree-sitter

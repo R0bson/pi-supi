@@ -6,6 +6,9 @@
     ":automergeMinor",
     ":semanticCommitTypeAll(fix)"
   ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "labels": ["dependencies"],
   "gitIgnoredAuthors": ["41898282+github-actions[bot]@users.noreply.github.com"],
   "customManagers": [
@@ -58,13 +61,9 @@
       "matchPackageNames": ["mattpocock/skills", "mattpocock-skills"]
     },
     {
-      "description": "Pi core peer deps use '*' ranges and must not be auto-updated by Renovate",
+      "description": "Upgrade Pi manually. Workspace overrides keep Pi fixed during lock-file maintenance.",
       "enabled": false,
-      "matchPackageNames": [
-        "@earendil-works/pi-ai",
-        "@earendil-works/pi-coding-agent",
-        "@earendil-works/pi-tui"
-      ]
+      "matchPackageNames": ["@earendil-works/pi-*", "@earendil-works/chord", "@mariozechner/pi-*"]
     }
   ]
 }
