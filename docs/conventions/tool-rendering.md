@@ -28,6 +28,20 @@ A tool may open a temporary form with `ctx.ui.custom()`. The tool still needs a 
 
 Custom messages and durable custom entries use different APIs. Use `registerMessageRenderer()` for `pi.sendMessage()` messages and `registerEntryRenderer()` for `pi.appendEntry()` entries. Build their chrome from `message.details` or `entry.data`; do not recover structured facts from message text.
 
+## Renderer registration
+
+Keep `renderCall` and `renderResult` on the tool definition for normal SuPi tools. `pi.registerToolRenderer()` is not a replacement requirement. Use it when rendering must be separate from tool registration:
+
+- Render historical calls before an MCP server connects.
+- Customize a built-in or third-party tool without replacing its execution.
+- Supply fallback renderers for explicit tool names.
+
+Resolvers run in extension load order. `next()` returns the selection from the remaining resolvers, then the registered tool. Use `next() ?? fallback` to preserve that selection and supply only a missing renderer set; this is not a per-slot merge. Return `next()` for tool names the resolver does not own. Avoid a global fallback for unrelated tools.
+
+The extension that registers the resolver must still load. This API does not make renderers from an absent extension available. Handle missing or old `details`, and test resumed calls, resolver order, error results, and current-session HTML export when adding a resolver.
+
+API reference: installed Pi `docs/extensions.md` § Tool rendering and `ToolRendererResolver` in `dist/core/extensions/types.d.ts`.
+
 ## Slots
 
 ### `renderCall`

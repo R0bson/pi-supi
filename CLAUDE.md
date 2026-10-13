@@ -18,6 +18,7 @@ SuPi is pre-release and not API-stable. Intentional breaking changes to package 
 ## Documentation expectations
 
 - `docs/INDEX.md` is the docs index — start there for repo documentation; add new docs per its maintenance rules.
+- Documentation describes the Pi version configured in dependencies. Omit version stamps; retain source references.
 - Add JSDoc for exported APIs, config surfaces, and non-obvious behavior; skip boilerplate for trivial private code.
 - Add inline JSDoc for complex internal logic where a short explanation would help maintainers.
 
@@ -105,7 +106,6 @@ Extensions register a `SettingsModule` via `registerSettings()` from `@mrclrchtr
 ### UI & rendering
 - `ctx.ui.theme` does not expose an `"info"` color; use existing colors like `"accent"` / `"dim"` for info-level UI.
 - PI sets the terminal title directly on `this.ui.terminal` during startup and on `/name` renames — it never flows through `ctx.ui.setTitle`. Intercepting `ctx.ui.setTitle` to capture PI's title won't work; recompute dynamically with `pi.getSessionName()` and `ctx.cwd` instead.
-- TUI rendering changes (`renderCall`, `renderResult`) require `/reload` — pi loads extensions from the working tree.
 - `renderShell: "self"` on `pi.registerTool` strips pi's Box (background, padding) entirely — the tool must provide its own framing. Avoid unless the tool needs full-screen control.
 - `code_resolve` target IDs are content-hash based (cwd, file, name, canonical kind, container, declaration line/occurrence, and file fingerprint). The refinable display/name-anchor position is excluded, so anchor refinement reuses the same ID.
 

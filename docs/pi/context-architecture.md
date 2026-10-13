@@ -7,7 +7,8 @@ Use the installed Pi docs (§3) for complete API contracts. This doc lists exten
 Evidence sources:
 
 - Installed Pi docs: `docs/extensions.md`, `docs/compaction.md`, `docs/skills.md`, `docs/session-format.md`, and `docs/sdk.md`.
-- Context-control rules in §4–5: checked against Pi 0.87.0 docs and `core/session-manager.d.ts`.
+- Context-control rules in §4–5: installed Pi docs and `core/session-manager.d.ts`.
+- Native Anthropic tool changes in §2 and §4: installed Pi `docs/extensions.md` § Activate tools dynamically and pi-ai `api/anthropic-messages.js` (`buildParams()` and `convertMessages()`).
 - Installed dist source: pi-coding-agent `core/system-prompt.js` and `core/agent-session.js`; pi-ai `api/*`; pi-agent-core `harness/messages.js`.
 
 Items marked **inferred** are not stated in Pi docs or source. Price relations follow provider prompt-caching economics. This guidance excludes user controls: the system prompt skeleton, `AGENTS.md` files, compaction settings, `/tree` and `/fork`, and `PI_CACHE_RETENTION`.
@@ -45,7 +46,7 @@ Tool definitions carry `cache_control` only when `supportsCacheControlOnTools` p
 
 ### Tier 1 — stable prefix
 
-On the Anthropic Messages path, the initial stable prefix contains the system prompt and the immediate tool definitions. The system prompt contains the skill catalog and context files. It also contains active `promptSnippet` and `promptGuidelines` values when Pi uses the default prompt. Deferred definitions enter later at their tool-result load point and are Tier 2.
+On the Anthropic Messages path, the initial stable prefix contains the system prompt and the immediate tool definitions. The system prompt contains the skill catalog and context files. It also contains active `promptSnippet` and `promptGuidelines` values when Pi uses the default prompt. On the native tool-change path, later tool definitions enter inline in the conversation and are Tier 2.
 
 - Billed at full input price on every cold session start and every cache miss.
 - Billed at cheap `cacheRead` price on a cache hit. Cross-session reuse happens only within the provider TTL and only when the prefix is byte-identical.
@@ -53,7 +54,9 @@ On the Anthropic Messages path, the initial stable prefix contains the system pr
 
 ### Tier 2 — additions
 
-Additions include new user and assistant messages, new tool results, and deferred definitions at their load point.
+Additions include new user and assistant messages, new tool results, and inline tool changes.
+
+On the Anthropic Messages path, native tool changes keep the request-level tool list fixed. Later additions and same-name redefinitions use `tool_addition` blocks with inline `tool_definition` values; removals use `tool_removal` blocks. This path requires support for both mid-conversation system messages and tool changes, plus at least one initial active tool. Otherwise, Pi sends the current tool list. Inline changes can preserve the earlier cache prefix; they do not guarantee a cache hit.
 
 - Billed once at full input price (plus provider cache-write premium) when appended.
 - Then part of the prefix on later requests: cheap on hits, re-paid in full on every later miss. Compaction or a context edit can remove or replace that content in future requests.
@@ -61,7 +64,7 @@ Additions include new user and assistant messages, new tool results, and deferre
 
 ### Tier 3 — cache breaks
 
-- A change to stable-prefix bytes can cause full input billing on the next request. Examples include a changed immediate tool list or a changed system prompt. Activation with `promptSnippet` or `promptGuidelines` changes the default system prompt. A per-turn system-prompt change has the same risk. Native deferred loading can keep the initial prefix stable during additive tool activation. Official cache advice: installed Pi `docs/extensions.md` § Dynamic Tool Loading.
+- A change to stable-prefix bytes can cause full input billing on the next request. Examples include a changed request-level tool list or a changed leading system prompt. Activation with `promptSnippet` or `promptGuidelines` changes the default system prompt. Pi records prompt and tool changes in later system messages; providers that cannot represent a transition receive a complete transcript checkpoint, which can invalidate the cached prefix. Native Anthropic tool changes can preserve the prefix for additions, removals, and same-name redefinitions. Official reference: installed Pi `docs/extensions.md` § Activate tools dynamically.
 - Compaction and branch-summary calls use fresh routing session IDs. They also disable prompt-cache writes where the provider supports this control (official: `docs/compaction.md` Overview).
 - **Inferred:** an append-only `context_edit` can still change an earlier request prefix. Less model-visible content does not guarantee a cache hit or lower cost on the next request. Compare context savings with the possible loss of cache reuse.
 - Design rule: keep stable input unchanged. Register all tools at startup. Keep activation changes additive and rare.
@@ -77,7 +80,7 @@ Read these first (repo pi-docs-first rule). Locations refer to the installed Pi 
 | Parallel execution and `withFileMutationQueue()` | `extensions.md` § Custom Tools |
 | State in `details` + branch reconstruction | `extensions.md` § State Management |
 | Built-in overrides: per-slot renderer inheritance, prompt-metadata non-inheritance | `extensions.md` § Overriding Built-in Tools |
-| Dynamic/lazy tool loading, deferred-native models, fallback | `extensions.md` § Dynamic Tool Loading |
+| Dynamic tool activation, inline changes, checkpoint fallback | `extensions.md` § Activate tools dynamically |
 | `tool_call` / `tool_result` handler mechanics | `extensions.md` § Tool Events |
 | Compaction triggers, cut points, summary format, 2,000-char tool-result serialization | `compaction.md` |
 | Custom summaries and branch summaries via extensions | `compaction.md` § Custom Summarization via Extensions |
@@ -93,7 +96,7 @@ These surfaces are documented in `docs/extensions.md` and `docs/session-format.m
 
 - **System prompt injection** — `before_agent_start` can return a replacement `systemPrompt` (chains across handlers) and a `message` (stored and sent). `event.systemPromptOptions` exposes the structured inputs. Part of the Tier-1 prefix: keep stable.
 - **Tool prompt metadata** — Pi adds `promptSnippet` and `promptGuidelines` to the default system prompt only while the tool is active. Such activation changes Tier 1 bytes. A custom system prompt does not include these fields automatically. Design rules: `tool-guidance.md#model-facing-guidance`.
-- **Dynamic tool loading** — additive `pi.setActiveTools()` during execution. Deferred-native models keep the prefix stable and load definitions at the tool-result position (Tier 2); the fallback resends the full active list and can break the prefix (Tier 3). Lazy tools should rely on `description` only and omit `promptSnippet`/`promptGuidelines`. Current model list: installed Pi `docs/extensions.md` § Models with native deferred loading.
+- **Dynamic tool loading** — register all tools first, then use `pi.setActiveTools()` to select active tools. Unknown names are ignored. Pi records changes before the next model request. Native Anthropic tool changes send later definitions inline (Tier 2), including same-name redefinitions, under the conditions in §2. The fallback can change the request-level tool list or create a transcript checkpoint and break the prefix (Tier 3). For portable cache behavior, lazy tools should rely on `description` and omit `promptSnippet`/`promptGuidelines`. Official reference: installed Pi `docs/extensions.md` § Activate tools dynamically.
 - **Output changes before storage** — the `tool_result` event rewrites output before it enters the session. Prefer moving noise from `content` to `details` over deleting information — `details` is free (§1). Spill rules: `tool-guidance.md#output-size`. The 2,000-char cut applies only during summary serialization (official: `compaction.md` § Message Serialization), not in live history.
 - **Persistent context edits** — append a `context_edit` to omit or replace an earlier message in future model context. Raw history and recorded usage stay unchanged. Use boundary entry proposals in extensions, or `appendContextEdit()` on an SDK-owned `SessionManager`. See §5 for target and branch rules.
 - **Per-request conversation changes** — `context` receives a deep copy without system messages. When a handler changes the list, Pi restores the current prompt and tool declarations in a leading system message. An unchanged list keeps intermediate system messages in place. Use this hook to filter conversation content, not to remove the prompt or tools.
