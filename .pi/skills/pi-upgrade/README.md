@@ -19,18 +19,14 @@ Check for available upgrades to the pi coding agent framework and generate actio
 
 ## Usage
 
-1. Ask whether to **dry-run** or **direct apply**
-2. Run the helper with the chosen mode
-3. Read the installed docs if the upgrade applied cleanly
-4. Map the release notes to the repo's actual pi usage
-5. Present a structured upgrade report and offer follow-up migrations
+1. Run the helper to update files and install, without asking for confirmation
+2. Read the installed docs if the upgrade applied cleanly
+3. Map the release notes to the repo's actual pi usage
+4. Present a structured upgrade report and offer follow-up migrations
 
 ```bash
-# Preview what would change (no files modified)
-bash "<skill-dir>/scripts/check-pi-version" --dry-run [path/to/package.json]
-
-# Bump versions, migrate legacy names, install, and report
-bash "<skill-dir>/scripts/check-pi-version" --apply [path/to/package.json]
+# Update versions, migrate legacy names, install, and report
+bash "<skill-dir>/scripts/check-pi-version" [path/to/package.json]
 ```
 
 ## Package mapping
@@ -60,9 +56,9 @@ bash "<skill-dir>/scripts/check-pi-version" --apply [path/to/package.json]
 | `bumpedFiles` | Manifest and workspace override files changed by the helper |
 | `bumpChanges` | Per-file changes with `field`, `package`, optional `packageFrom`, `old`, and `new` |
 | `updatePackages` | Canonical pi packages detected in the workspace |
-| `installCommand` | The package manager command that was (or would be) run |
+| `installCommand` | The package manager command that was run |
 | `installExitCode` | Non-zero if install, dedupe, or version verification fails |
-| `resolvedVersions` | Installed Pi versions checked after install; empty in dry-run |
+| `resolvedVersions` | Installed Pi versions checked after install |
 | `installOutput` | Stdout+stderr from install |
 
 ## File structure
@@ -92,7 +88,7 @@ add overrides. Use a block mapping with scalar versions in `pnpm-workspace.yaml`
 Pi selectors and alias values need manual review; the helper stops before edits
 when it finds them. Other YAML settings and comments stay unchanged.
 
-Dry-run includes override changes in `bumpChanges`. Apply sets these overrides
+The helper includes override changes in `bumpChanges`. It sets these overrides
 to the target release, then installs and checks installed Pi dependencies.
 A successful install alone does not prove that old pins were removed. A version
 mismatch returns a non-zero exit code and includes the error in `installOutput`.

@@ -88,7 +88,7 @@ afterEach(() => {
 });
 
 describe("Pi upgrade workspace overrides", () => {
-  it.each([{ args: [] }, { args: ["--dry-run"] }])("previews without edits: %j", ({ args }) => {
+  it("rejects the removed preview flag without edits", () => {
     const { root } = fixture();
     const files = [
       "package.json",
@@ -97,37 +97,36 @@ describe("Pi upgrade workspace overrides", () => {
       "pnpm-lock.yaml",
     ];
     const before = files.map((file) => read(root, file));
-    const result = run(root, args);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.data.currentSource).toBe("workspace-override");
-    expect(result.data.applied).toBe(false);
-    expect(result.data.updatePackages).toContain("@earendil-works/chord");
-    expect(
-      result.data.bumpChanges.find((item) => item.file.endsWith(".yaml")).changes,
-    ).toHaveLength(8);
+    const result = run(root, ["--dry-run"]);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Unknown flag: --dry-run");
     expect(files.map((file) => read(root, file))).toEqual(before);
     expect(() => read(root, "commands")).toThrow();
   });
 
-  it("applies all pins in an isolated workspace and verifies installed versions", () => {
-    const { root } = fixture();
-    const yaml = read(root, "pnpm-workspace.yaml");
-    const result = run(root, ["--apply"]);
-    expect(result.status, result.stderr).toBe(0);
-    expect(read(root, "pnpm-workspace.yaml")).toBe(yaml.replaceAll("1.0.0", "1.1.0"));
-    expect(
-      JSON.parse(read(root, "package.json")).devDependencies["@earendil-works/pi-coding-agent"],
-    ).toBe("^1.1.0");
-    const ext = JSON.parse(read(root, "packages/ext/package.json"));
-    expect(ext.devDependencies["@earendil-works/pi-tui"]).toBe("~1.1.0");
-    expect(ext.peerDependencies).toEqual({ "@earendil-works/pi-ai": "*", typebox: "*" });
-    expect(read(root, "commands")).toBe("install\ndedupe\n");
-    expect(result.data.resolvedVersions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ package: "@earendil-works/chord", version: "1.1.0" }),
-      ]),
-    );
-  });
+  it.each([{ args: [] }, { args: ["--apply"] }])(
+    "applies and verifies versions: %j",
+    ({ args }) => {
+      const { root } = fixture();
+      const yaml = read(root, "pnpm-workspace.yaml");
+      const result = run(root, args);
+      expect(result.data.applied).toBe(true);
+      expect(result.status, result.stderr).toBe(0);
+      expect(read(root, "pnpm-workspace.yaml")).toBe(yaml.replaceAll("1.0.0", "1.1.0"));
+      expect(
+        JSON.parse(read(root, "package.json")).devDependencies["@earendil-works/pi-coding-agent"],
+      ).toBe("^1.1.0");
+      const ext = JSON.parse(read(root, "packages/ext/package.json"));
+      expect(ext.devDependencies["@earendil-works/pi-tui"]).toBe("~1.1.0");
+      expect(ext.peerDependencies).toEqual({ "@earendil-works/pi-ai": "*", typebox: "*" });
+      expect(read(root, "commands")).toBe("install\ndedupe\n");
+      expect(result.data.resolvedVersions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ package: "@earendil-works/chord", version: "1.1.0" }),
+        ]),
+      );
+    },
+  );
 
   it("rejects stale installed versions after a successful install", () => {
     const { root } = fixture();
@@ -152,8 +151,8 @@ describe("Pi upgrade workspace overrides", () => {
       JSON.stringify({ name: "@earendil-works/pi-ai", version: "1.0.0" }),
     );
     const before = read(root, "pnpm-workspace.yaml");
-    const result = run(root, ["--dry-run"]);
-    expect(result.status, result.stderr).toBe(0);
+    const result = run(root, [], { FAIL_INSTALL: "1" });
+    expect(result.status, result.stderr).toBe(2);
     expect(result.data.bumpChanges.every((item) => item.file.endsWith("package.json"))).toBe(true);
     expect(read(root, "pnpm-workspace.yaml")).toBe(before);
   });

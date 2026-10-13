@@ -36,18 +36,16 @@ The bundled helper (`scripts/check-pi-version`) handles the mechanical work:
 - Returns structured JSON with the current version, latest version, release
   notes, bumped files, and install status
 
-**Dry-run is the default.** Use `--apply` only after the user approves the upgrade.
+The helper updates files and installs immediately. Run it for upgrade requests
+without a separate confirmation.
 A request to edit this skill or its helper is not approval to upgrade Pi.
 
 Resolve `scripts/check-pi-version` relative to this `SKILL.md` file's directory;
 do not assume the target project contains `.pi/skills/pi-upgrade`.
 
 ```bash
-# Preview only (recommended/default)
-bash "<skill-dir>/scripts/check-pi-version" --dry-run [path/to/package.json]
-
-# Bump + install + report (only after the user chooses direct apply)
-bash "<skill-dir>/scripts/check-pi-version" --apply [path/to/package.json]
+# Update versions, install, and report
+bash "<skill-dir>/scripts/check-pi-version" [path/to/package.json]
 ```
 
 ## What YOU do after the helper runs
@@ -62,17 +60,7 @@ bash "<skill-dir>/scripts/check-pi-version" --apply [path/to/package.json]
 
 ## Workflow
 
-### Step 1: Choose invocation mode
-
-Before running the helper, ask the user whether to preview or directly apply:
-
-1. **Dry-run (recommended/default)** — no files change.
-2. **Direct apply** — bumps package ranges and installs immediately.
-
-Do not invoke the helper until the user chooses a mode. If they already stated a
-preference, follow it without asking again.
-
-### Step 2: Run the helper
+### Step 1: Run the helper
 
 Run from the project root. Resolve the helper as `<skill-dir>/scripts/check-pi-version`,
 where `<skill-dir>` is the directory containing this `SKILL.md`.
@@ -81,27 +69,14 @@ If it returns `upToDate: true`, congratulate the user and stop.
 
 If it errors, surface the exact error and ask the user to fix it.
 
-### Step 3: Continue based on the selected mode
-
-#### If dry-run was selected
-
-Use the JSON output to summarize the available upgrade, release notes, and files
-that would be bumped. Do **not** analyze `node_modules/` as the latest release yet:
-dry-run does not install anything, so local docs and type definitions may still be
-from the old version.
-
-After the preview, ask whether the user wants to apply the upgrade. If they
-confirm, rerun the helper with `--apply`, then continue with the installed-doc
-analysis below. If they decline, stop after the preview.
-
-#### If direct apply was selected
+### Step 2: Check the install result
 
 The helper bumps package ranges and runs install immediately. If `installExitCode`
 is non-zero, surface `installOutput` and stop; the latest docs may not be present.
 Continue only when install and resolved-version checks succeed. Check
 `resolvedVersions` before reading the new docs.
 
-### Step 4: Read the newly installed pi docs
+### Step 3: Read the newly installed pi docs
 
 After the helper succeeds with `applied: true` and `installExitCode: 0`, the
 resolved versions must match the target release in `resolvedVersions`.
@@ -113,7 +88,7 @@ Only then read the docs in `node_modules/`.
 - Focus on new APIs, config options, deprecations, and behavior changes that
   matter to the user's code
 
-### Step 5: Investigate the user's pi usage
+### Step 4: Investigate the user's pi usage
 
 Read the project's pi-relevant files to understand current patterns:
 
@@ -122,7 +97,7 @@ Read the project's pi-relevant files to understand current patterns:
 - Existing skills and prompts
 - Any `CLAUDE.md` or project docs referencing pi APIs
 
-### Step 6: Generate the upgrade report
+### Step 5: Generate the upgrade report
 
 Use the helper output and the repo context to write a report that includes:
 
@@ -131,7 +106,7 @@ Use the helper output and the repo context to write a report that includes:
 - Any breaking changes or deprecations
 - Concrete follow-up steps
 
-### Step 7: Offer to apply migrations
+### Step 6: Offer to apply migrations
 
 After presenting the report, ask what the user wants to do next:
 
@@ -141,7 +116,7 @@ After presenting the report, ask what the user wants to do next:
 
 ## Guardrails
 
-- Ask before the first invocation.
+- Run upgrade requests without a separate confirmation.
 - Respect version pinning; keep `^`/`~` prefixes unless the upgrade requires it.
 - Handle pre-releases carefully.
 - If `gh` is missing, ask the user to install and authenticate it.
@@ -156,7 +131,7 @@ add overrides. Use a block mapping with scalar versions in `pnpm-workspace.yaml`
 Pi selectors and alias values need manual review; the helper stops before edits
 when it finds them. Other YAML settings and comments stay unchanged.
 
-Dry-run includes override changes in `bumpChanges`. Apply sets these overrides
+The helper includes override changes in `bumpChanges`. It sets these overrides
 to the target release, then installs and checks installed Pi dependencies.
 A successful install alone does not prove that old pins were removed. A version
 mismatch returns a non-zero exit code and includes the error in `installOutput`.

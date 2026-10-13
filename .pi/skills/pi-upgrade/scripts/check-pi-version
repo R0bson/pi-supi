@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Detect @earendil-works/pi-* (and legacy @mariozechner/pi-*) version drift against earendil-works/pi releases.
-# Default: preview. Use --apply to change files and install.
+# Updates files and installs the upgrade.
 # Requires: Bash >= 5.0 (uses modern arrays, namerefs, and shell quoting transforms).
 #
 
@@ -23,7 +23,6 @@ readonly PI_PREFERRED_PACKAGES_JSON='["@earendil-works/pi-coding-agent","@earend
 
 readonly OVERRIDE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/workspace-overrides.cjs"
 
-declare APPLY=false
 declare RESOLVED_VERSIONS="[]"
 declare PKG_JSON="package.json"
 declare PKG_DIR=""
@@ -162,17 +161,16 @@ NODE
 parse_args() {
   while (($# > 0)); do
     case "$1" in
-      --dry-run) APPLY=false; shift ;;
-      --apply) APPLY=true; shift ;;
+      --apply) shift ;;
       --help|-h)
         cat <<-'EOF'
-Usage: check-pi-version [--dry-run|--apply] [path/to/package.json]
+Usage: check-pi-version [--apply] [path/to/package.json]
 
   Detects @earendil-works/pi-* or legacy @mariozechner/pi-* version in package.json, compares against
-  earendil-works/pi releases. Previews changes by default.
+  earendil-works/pi releases. Updates manifests and existing workspace overrides,
+  then installs the upgrade.
 
-  --apply     Update manifests and existing workspace overrides, then install
-  --dry-run   Only report what would be changed without modifying files
+  --apply     Optional; upgrades are always applied
 EOF
         exit 0
         ;;
@@ -629,7 +627,6 @@ emit_json() {
   PI_UPGRADE_DEP_FIELD="$DEP_FIELD" \
   PI_UPGRADE_DEP_RANGE="$DEP_RANGE" \
   PI_UPGRADE_LATEST="$LATEST" \
-  PI_UPGRADE_APPLY="$APPLY" \
   PI_UPGRADE_INSTALL_CMD="$INSTALL_CMD" \
   PI_UPGRADE_INSTALL_EXIT="$INSTALL_EXIT" \
   PI_UPGRADE_TMP="$tmp_json" \
@@ -645,7 +642,7 @@ emit_json() {
       latest: process.env.PI_UPGRADE_LATEST,
       upToDate: false,
       newerReleases: JSON.parse(process.env.PI_UPGRADE_NOTES || "[]"),
-      applied: process.env.PI_UPGRADE_APPLY === "true",
+      applied: true,
       bumpedFiles: bump.map((x) => x.file),
       bumpChanges: bump,
       updatePackages: JSON.parse(process.env.PI_UPGRADE_UPDATE_PACKAGES || "[]"),
@@ -701,16 +698,9 @@ main() {
   # Build bump preview and install plan
   build_bump_preview
   build_update_packages
-  if [[ "$APPLY" == false ]]; then
-    plan_install >/dev/null
-  fi
-
-  # Apply if not dry-run
-  if [[ "$APPLY" == true ]]; then
-    apply_bumps
-    run_install
-    verify_install
-  fi
+  apply_bumps
+  run_install
+  verify_install
 
   # Emit result
   emit_json "$notes"
