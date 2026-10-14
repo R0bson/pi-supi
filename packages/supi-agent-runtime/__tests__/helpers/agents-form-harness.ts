@@ -182,5 +182,6 @@ function makeTerminal(): Terminal {
     clearScreen() {},
     setTitle() {},
     setProgress() {},
+    setProgramStatus() {},
   };
 }
