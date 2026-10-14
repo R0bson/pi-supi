@@ -12,6 +12,7 @@ A **commit candidate** is the exact patch that will enter the commit. A **cohere
 - Inspect candidate changes for credentials, private keys, tokens, and local secret files. **STOP and ask** what to do without repeating the secret value.
 - Preserve changes outside the current task. Ask before changing an existing staged change that is outside the task boundary.
 - Keep normal Git hooks enabled.
+- Do not use sub-agents.
 
 # Process
 
@@ -34,6 +35,10 @@ A **commit candidate** is the exact patch that will enter the commit. A **cohere
    ```bash
    git commit -F - <<'COMMIT_MSG'
    type(scope): concise summary
+
+   optional body explaining why, trade-offs, constraints, side effects, or follow-ups
+
+   #related-issue
    COMMIT_MSG
    ```
 
