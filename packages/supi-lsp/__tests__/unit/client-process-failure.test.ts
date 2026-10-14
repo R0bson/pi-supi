@@ -149,6 +149,26 @@ describe("LspClient process failure", () => {
     },
   );
 
+  it("surfaces the server stderr tail when initialization fails", async () => {
+    // Real-world pattern: an expired kotlin-lsp build exits during
+    // initialize and writes its exit reason to stderr. The thrown startup
+    // failure must carry that reason instead of a generic transport error.
+    mocks.initializeError = new Error("Pending response rejected since connection got disposed");
+    const client = new LspClient(
+      "test",
+      { command: "test-lsp", fileTypes: ["ts"], rootMarkers: ["package.json"] },
+      "/project",
+    );
+
+    const stderr = process.stderr as NonNullable<ChildProcess["stderr"]>;
+    const startPromise = client.start();
+    // start() attaches the stderr listener synchronously before the
+    // initialize await, so this emit lands before the failure settles.
+    stderr.emit("data", "This build of kotlin-server has expired.\n");
+
+    await expect(startPromise).rejects.toThrow(/initialize failed[\s\S]*expired/);
+  });
+
   it("releases a pending file diagnostic waiter when the server process fails", async () => {
     const client = new LspClient(
       "test",

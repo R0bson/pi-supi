@@ -78,6 +78,9 @@ import { JsonRpcClient, JsonRpcRequestError } from "./transport.ts";
 
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
+/** Bounded stderr tail kept for startup-failure error messages. */
+const STDERR_TAIL_MAX_CHARS = 4_000;
+
 interface SemanticRequestAttemptState {
   inputRevision: number | undefined;
 }
@@ -699,8 +702,13 @@ export class LspClient {
       this.handleProcessFailure(new Error("Client process error"));
     });
 
-    // Suppress stderr to avoid noise in the agent
-    this.process.stderr?.on("data", () => {});
+    // Capture a bounded stderr tail (discarded otherwise) so startup
+    // failures can surface the server's own exit reason — expired builds,
+    // missing runtimes, or invalid flags. Stderr never reaches the agent.
+    let stderrTail = "";
+    this.process.stderr?.on("data", (chunk: Buffer | string) => {
+      stderrTail = `${stderrTail}${chunk}`.slice(-STDERR_TAIL_MAX_CHARS);
+    });
 
     // Initialize handshake
     try {
@@ -736,7 +744,10 @@ export class LspClient {
 
       this.armNoProgressTimer();
     } catch (err) {
-      const failure = new Error(`${this.name}: initialize failed: ${err}`, { cause: err });
+      const stderrDetail = stderrTail.trim() ? `\n${this.name} stderr:\n${stderrTail.trim()}` : "";
+      const failure = new Error(`${this.name}: initialize failed: ${err}${stderrDetail}`, {
+        cause: err,
+      });
       this.handleProcessFailure(failure);
       killFailedStartupProcess(this.process);
       throw failure;
