@@ -172,7 +172,7 @@ overrides:
   '@earendil-works/pi-tui': 1.2.0
 
 patchedDependencies:
-  mattpocock-skills@*: d7624f7a993b832303bf9485a3acfcf5821e76c193a6423a61dbb718372b5217
+  mattpocock-skills@*: 03117bcd848d300ed89f6fe189c8b51cedd3b577d2a078bf05e99857f252d511
 
 importers:
 
@@ -709,7 +709,7 @@ importers:
         version: 2.7.0
       mattpocock-skills:
         specifier: github:mattpocock/skills#v1.2.3
-        version: https://codeload.github.com/mattpocock/skills/tar.gz/6acc160e4e0cd062dbbbd7a1b26ae92855edf07e(patch_hash=d7624f7a993b832303bf9485a3acfcf5821e76c193a6423a61dbb718372b5217)
+        version: https://codeload.github.com/mattpocock/skills/tar.gz/6acc160e4e0cd062dbbbd7a1b26ae92855edf07e(patch_hash=03117bcd848d300ed89f6fe189c8b51cedd3b577d2a078bf05e99857f252d511)
       vitest:
         specifier: 5.0.3
         version: 5.0.3(@types/node@25.9.9)(jsdom@30.1.2)(vite@8.3.4(@types/node@25.9.9)(jiti@2.7.0)(yaml@2.9.1))
@@ -4022,7 +4022,7 @@ snapshots:
 
   marked@18.0.11: {}
 
-  mattpocock-skills@https://codeload.github.com/mattpocock/skills/tar.gz/6acc160e4e0cd062dbbbd7a1b26ae92855edf07e(patch_hash=d7624f7a993b832303bf9485a3acfcf5821e76c193a6423a61dbb718372b5217): {}
+  mattpocock-skills@https://codeload.github.com/mattpocock/skills/tar.gz/6acc160e4e0cd062dbbbd7a1b26ae92855edf07e(patch_hash=03117bcd848d300ed89f6fe189c8b51cedd3b577d2a078bf05e99857f252d511): {}
 
   mdn-data@2.27.1: {}
 

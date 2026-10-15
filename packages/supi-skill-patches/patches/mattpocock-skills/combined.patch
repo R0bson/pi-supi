@@ -189,10 +189,10 @@ index 00000000..00000000
 +SOFTWARE.
 diff --git a/skills/engineering/commit/SKILL.md b/skills/engineering/commit/SKILL.md
 new file mode 100644
-index 00000000..498f33be
+index 00000000..719ef410
 --- /dev/null
 +++ b/skills/engineering/commit/SKILL.md
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,49 @@
 +---
 +name: commit
 +description: "Guides how to commit"
@@ -207,6 +207,7 @@ index 00000000..498f33be
 +- Inspect candidate changes for credentials, private keys, tokens, and local secret files. **STOP and ask** what to do without repeating the secret value.
 +- Preserve changes outside the current task. Ask before changing an existing staged change that is outside the task boundary.
 +- Keep normal Git hooks enabled.
++- Do not use sub-agents.
 +
 +# Process
 +
@@ -229,6 +230,10 @@ index 00000000..498f33be
 +   ```bash
 +   git commit -F - <<'COMMIT_MSG'
 +   type(scope): concise summary
++
++   optional body explaining why, trade-offs, constraints, side effects, or follow-ups
++
++   #related-issue
 +   COMMIT_MSG
 +   ```
 +
