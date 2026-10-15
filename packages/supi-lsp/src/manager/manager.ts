@@ -2390,7 +2390,7 @@ export class LspManager {
     return Array.from(activeServers.entries())
       .map(([name, openFiles]) => ({
         name,
-        openFiles: Array.from(openFiles).sort(),
+        openFiles: Array.from(openFiles).sort((left, right) => left.localeCompare(right)),
       }))
       .sort((a, b) => b.openFiles.length - a.openFiles.length || a.name.localeCompare(b.name));
   }

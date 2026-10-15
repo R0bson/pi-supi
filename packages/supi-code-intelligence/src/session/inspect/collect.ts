@@ -302,8 +302,10 @@ function comparePosition(
   return leftLine - rightLine || leftCharacter - rightCharacter;
 }
 
-function lspUnavailableReason(state: Exclude<WorkspaceLspRuntimeState, { kind: "ready" }>): string {
+function lspUnavailableReason(state: WorkspaceLspRuntimeState): string {
   switch (state.kind) {
+    case "ready":
+      throw new Error("Cannot report an unavailable reason for a ready LSP runtime.");
     case "unavailable":
       return state.reason;
     case "pending":

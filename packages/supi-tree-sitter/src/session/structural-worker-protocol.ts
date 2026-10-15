@@ -515,7 +515,7 @@ function isFiniteDuration(value: unknown): boolean {
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
+  const actual = Object.keys(value);
   return actual.length === expected.length && expected.every((key) => actual.includes(key));
 }
 

@@ -95,9 +95,9 @@ describe("code intelligence tool specs", () => {
     const specNames = CODE_INTELLIGENCE_TOOL_SPECS.map((spec) => spec.name);
     expect(new Set(specNames).size).toBe(CODE_INTELLIGENCE_TOOL_NAMES.length);
     expect([...specNames].sort()).toEqual([...CODE_INTELLIGENCE_TOOL_NAMES].sort());
-    expect(Object.keys(CODE_INTELLIGENCE_TOOL_SCHEMAS).sort()).toEqual(
-      [...CODE_INTELLIGENCE_TOOL_NAMES].sort(),
-    );
+    expect(
+      Object.keys(CODE_INTELLIGENCE_TOOL_SCHEMAS).sort((left, right) => left.localeCompare(right)),
+    ).toEqual([...CODE_INTELLIGENCE_TOOL_NAMES].sort());
 
     for (const spec of CODE_INTELLIGENCE_TOOL_SPECS) {
       expect(Object.hasOwn(CODE_INTELLIGENCE_TOOL_SCHEMAS, spec.name)).toBe(true);
@@ -203,7 +203,12 @@ describe("code intelligence tool specs", () => {
     );
 
     expect(healthSchema.additionalProperties).toBe(false);
-    expect(Object.keys(properties).sort()).toEqual(["include", "level", "refresh", "scope"]);
+    expect(Object.keys(properties).sort((left, right) => left.localeCompare(right))).toEqual([
+      "include",
+      "level",
+      "refresh",
+      "scope",
+    ]);
     expect(values).toEqual(["diagnostics", "servers"]);
     expect(Check(CODE_INTELLIGENCE_TOOL_SCHEMAS.code_health, { include: ["coverage"] })).toBe(
       false,

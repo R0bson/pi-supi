@@ -43,7 +43,7 @@ describe("workspace sentinels", () => {
     expect(
       Array.from(snapshot.keys())
         .map((file) => path.relative(tmpDir, file))
-        .sort(),
+        .sort((left, right) => left.localeCompare(right)),
     ).toEqual([
       "package.json",
       "packages/app/package.json",

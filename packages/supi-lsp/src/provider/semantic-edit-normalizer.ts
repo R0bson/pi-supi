@@ -133,7 +133,7 @@ function normalizeChanges(
   }
 
   const edits: FileEdit[] = [];
-  for (const uri of Object.keys(changes).sort()) {
+  for (const uri of Object.keys(changes).sort((left, right) => left.localeCompare(right))) {
     const file = toFilePath(uri);
     const textEdits = changes[uri];
     if (!file) {
