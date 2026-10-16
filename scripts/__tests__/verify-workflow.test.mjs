@@ -55,7 +55,9 @@ describe("parallel verification workflow", () => {
     expect(installer).toContain("os: [ubuntu-latest, macos-latest, windows-latest]");
     expect(installer).toContain('node: ["24"]');
     expect(installer).toContain('node: "22.19.0"');
-    expect(installer).toContain("pnpm vitest run packages/supi-installer/ --reporter=agent");
+    expect(installer).toContain(
+      "pnpm vitest run packages/supi-installer/ scripts/__tests__/patch-checkout.test.mjs --reporter=agent",
+    );
     expect(verify).toContain("INSTALLER_RESULT: ${{ needs.installer.result }}");
   });
 

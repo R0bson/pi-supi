@@ -1,2 +1,3 @@
 # Patch context uses one leading space on otherwise blank lines.
-packages/supi-skill-patches/patches/**/*.patch -whitespace
+# Keep patch line endings at LF for pnpm on Windows.
+packages/supi-skill-patches/patches/**/*.patch text eol=lf -whitespace
