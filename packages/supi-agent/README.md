@@ -10,7 +10,7 @@
 
 Profile catalogue, field-level profile settings, and resource policy for foreground Agent Runs in PI.
 
-This package is the policy layer for `@mrclrchtr/supi-agent-runtime`. It discovers Profile Directory sources from package defaults, `~/.pi/agent/supi/agents/`, and trusted project `.pi/supi/agents/` directories. It also contributes per-profile Model and Thinking rows to `/supi-settings`.
+This package is the policy layer for `@mrclrchtr/supi-agent-runtime`. It discovers Profile Directory sources from package defaults, `~/.pi/agent/supi/agents/`, and trusted project `.pi/supi/agents/` directories. It also contributes per-profile Enabled, Model, and Thinking rows to `/supi-settings`.
 
 Built-in profiles:
 
@@ -20,6 +20,23 @@ Built-in profiles:
 Profile sources overlay fields by ID with project → global → package precedence. A partial user manifest can pin only `model` or `thinking`; package tools and prompts continue to flow through. An invalid source falls through with a bounded diagnostic. Profiles are context-isolated, not permission- or filesystem-sandboxed.
 
 Changes to **Agent Run tool** and each profile's **Model** and **Thinking** settings apply immediately. `/agents` stays available when `agent_run` is off.
+
+## Enable or disable profiles
+
+Use a profile's **Enabled** row in `/supi-settings`, or set `enabled` in its `profile.json`. For example, disable `general` globally in `~/.pi/agent/supi/agents/general/profile.json`:
+
+```json
+{ "enabled": false }
+```
+
+- `enabled` is an optional boolean. Omission inherits from the next source; the default is `true`.
+- Project → global → package precedence applies. A trusted project's `enabled: true` can override a global `false`.
+- Inherit/Reset removes the scoped field. Other manifest fields remain unchanged.
+- Run `/reload` after a change. Enablement and profile choices stay fixed until the next session start or reload, including after direct file edits.
+- Disabled profiles remain in settings. They are absent from model choices and cannot start new Agent Runs after the change takes effect.
+- The model can select the first 32 sorted, enabled, valid Profile IDs. Disabled profiles do not use these slots.
+- With no usable profiles, `agent_run` becomes inactive. Its saved **Agent Run tool** setting does not change. It becomes active again when a usable profile returns and the tool setting is on.
+- Validation rules do not change: an invalid source is ignored as a whole, including its `enabled` value. A lower-precedence source can still enable the profile.
 
 ## Agent Run row
 

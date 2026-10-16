@@ -21,6 +21,7 @@ import {
   loadAgentConfig,
   registerAgentSettings,
 } from "../../src/config.ts";
+import { agentProfileCatalogueStore } from "../../src/session.ts";
 
 function makeTempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "supi-agent-config-test-"));
@@ -70,7 +71,7 @@ describe("Agent Run config", () => {
     expect(settingsMocks.register).toHaveBeenCalledOnce();
   });
 
-  it("applies Agent Run availability changes to the current session", () => {
+  it("applies Agent Run availability changes to the current session", async () => {
     const homeDir = makeTempDir();
     const cwd = path.join(homeDir, "repo");
     fs.mkdirSync(cwd, { recursive: true });
@@ -78,6 +79,7 @@ describe("Agent Run config", () => {
     pi.setActiveTools(["read", "agent_run"]);
 
     try {
+      await agentProfileCatalogueStore.reload({ cwd, agentDir: homeDir, projectTrusted: false });
       registerAgentSettings(pi as never, homeDir);
       const options = settingsMocks.define.mock.calls.at(-1)?.[0] as
         | { afterPersist?: (change: { cwd: string }) => void }
@@ -99,6 +101,7 @@ describe("Agent Run config", () => {
       options?.afterPersist?.({ cwd });
       expect(pi.getActiveTools()).toEqual(["read", "agent_run"]);
     } finally {
+      agentProfileCatalogueStore.clear();
       fs.rmSync(homeDir, { recursive: true, force: true });
     }
   });

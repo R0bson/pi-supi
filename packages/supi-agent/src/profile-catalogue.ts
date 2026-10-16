@@ -53,6 +53,7 @@ export interface DiscoverProfileCatalogueOptions {
  *
  * When source directories are supplied, Model and Thinking settings are read
  * again so changes from `/supi-settings` apply to the next Agent Run.
+ * Other fields, including Enabled, stay fixed until the next catalogue refresh.
  */
 export function resolveProfileDefinition(
   entry: ProfileCatalogueEntry,
@@ -225,7 +226,8 @@ function collectEffectiveProfiles(
   const effective: ProfileCatalogueEntry[] = [];
   for (const profile of profiles) {
     diagnostics.push(...profile.diagnostics);
-    if (!("code" in resolveProfileDefinition(profile))) effective.push(profile);
+    const definition = resolveProfileDefinition(profile);
+    if (!("code" in definition) && definition.manifest.enabled !== false) effective.push(profile);
   }
   return effective;
 }
@@ -254,6 +256,7 @@ function buildResolvedManifest(
   >,
 ): AgentProfileManifest {
   return Object.freeze({
+    enabled: selected.has("enabled") ? selectedValue<boolean>(selected, "enabled") : true,
     description: selectedValue<string>(selected, "description"),
     tools: Object.freeze([
       ...selectedValue<readonly string[]>(selected, "tools"),
@@ -357,25 +360,11 @@ export function readCurrentProfileSources(
   sourceDirectories: ProfileSourceDirectories,
 ): ProfileCandidate[] {
   return SOURCE_ORDER.flatMap((source) => {
-    const root = sourceDirectory(sourceDirectories, source);
+    const root = sourceDirectories[source];
     if (!root) return [];
     const directory = join(root, profileId);
     return isDirectory(directory) ? [validateProfileDirectory(source, directory)] : [];
   });
-}
-
-function sourceDirectory(
-  directories: ProfileSourceDirectories,
-  source: ProfileSource,
-): string | undefined {
-  switch (source) {
-    case "package":
-      return directories.package;
-    case "global":
-      return directories.global;
-    case "project":
-      return directories.project;
-  }
 }
 
 function isDirectory(path: string): boolean {

@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadSupiConfig } from "@mrclrchtr/supi-core/config";
 import { defineConfigSettings, registerSettings } from "@mrclrchtr/supi-core/settings";
+import { agentProfileCatalogueStore } from "./session.ts";
 
 /** Persisted Agent Run settings. */
 export interface AgentConfig extends Record<string, unknown> {
@@ -26,10 +27,12 @@ export function loadAgentConfig(cwd: string, homeDir?: string): AgentConfig {
   return { agentToolEnabled };
 }
 
-/** Apply the configured Agent Run tool availability to the current PI session. */
+/** Activate Agent Run only when its setting is on and the current catalogue has usable profiles. */
 export function syncAgentRunTool(pi: ExtensionAPI, cwd: string, homeDir?: string): void {
   const activeTools = pi.getActiveTools();
-  const enabled = loadAgentConfig(cwd, homeDir).agentToolEnabled;
+  const enabled =
+    loadAgentConfig(cwd, homeDir).agentToolEnabled &&
+    (agentProfileCatalogueStore.get()?.profileIds.length ?? 0) > 0;
   const nextTools = enabled
     ? [...new Set([...activeTools, AGENT_RUN_TOOL_NAME])]
     : activeTools.filter((name) => name !== AGENT_RUN_TOOL_NAME);

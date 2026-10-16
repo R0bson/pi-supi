@@ -47,12 +47,12 @@ describe("profile settings", () => {
     expect(section.label).toBe("Agent");
     expect(section.subsection).toBe("explore");
     const rows = (await section.read({ scope: "global", cwd: paths.root })).rows;
-    expect(rows.map((row) => row.field.kind)).toEqual(["modelPicker", "enum"]);
-    expect(rows[0]).toMatchObject({
+    expect(rows.map((row) => row.field.kind)).toEqual(["boolean", "modelPicker", "enum"]);
+    expect(rows.find((row) => row.field.key === "model")).toMatchObject({
       displayValue: "Inherit from session (default)",
       editValue: "",
     });
-    expect(rows[1]?.field).toMatchObject({
+    expect(rows.find((row) => row.field.key === "thinking")?.field).toMatchObject({
       kind: "enum",
       values: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
     });
@@ -125,7 +125,9 @@ describe("profile settings", () => {
       model: "openai/project",
     });
     const rows = (await section.read({ scope: "project", cwd: paths.root })).rows;
-    expect(rows[0]).toMatchObject({ inheritanceSource: "default" });
+    expect(rows.find((row) => row.field.key === "model")).toMatchObject({
+      inheritanceSource: "default",
+    });
     await section.apply({
       scope: "project",
       cwd: paths.root,

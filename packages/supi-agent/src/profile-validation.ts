@@ -197,6 +197,7 @@ function validateManifest(value: unknown):
   return {
     ok: true,
     value: Object.freeze({
+      ...(hasOwn(value, "enabled") ? { enabled: value.enabled as boolean } : {}),
       ...(hasOwn(value, "description")
         ? { description: (value.description as string).trim() }
         : {}),
@@ -277,6 +278,9 @@ function validateInstructionScopes(
 function validateOptionalFields(
   value: Record<string, unknown>,
 ): { readonly ok: false; readonly code: "invalid-manifest"; readonly message: string } | undefined {
+  if (hasOwn(value, "enabled") && typeof value.enabled !== "boolean") {
+    return invalidManifest("enabled must be a boolean.");
+  }
   if (
     hasOwn(value, "model") &&
     (typeof value.model !== "string" || !isCanonicalModel(value.model))

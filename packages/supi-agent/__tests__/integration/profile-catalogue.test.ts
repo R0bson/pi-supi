@@ -100,6 +100,47 @@ describe("discoverProfileCatalogue", () => {
     });
   });
 
+  it("retains disabled profiles but exposes only enabled profiles by source precedence", async () => {
+    const roots = await sourceRoots();
+    await writeProfile(roots.packageDirectory, "default", manifest());
+    await writeProfile(roots.packageDirectory, "disabled", manifest());
+    await writeProfile(roots.globalDirectory, "disabled", { enabled: false });
+    await writeProfile(roots.packageDirectory, "overridden", { ...manifest(), enabled: false });
+    await writeProfile(roots.globalDirectory, "overridden", { enabled: true });
+    await writeProfile(roots.packageDirectory, "project", manifest());
+    await writeProfile(roots.globalDirectory, "project", { enabled: false });
+    await writeProfile(join(roots.root, ".pi", "supi", "agents"), "project", { enabled: true });
+
+    const options = {
+      cwd: roots.root,
+      agentDir: roots.agentDirectory,
+      packageDirectory: roots.packageDirectory,
+      projectTrusted: true,
+    };
+    const catalogue = await discoverProfileCatalogue(options);
+
+    expect(catalogue.profileIds).toEqual(["default", "overridden", "project"]);
+    expect(catalogue.profiles.map((profile) => profile.id)).toEqual([
+      "default",
+      "disabled",
+      "overridden",
+      "project",
+    ]);
+    expect(catalogue.diagnostics).toEqual([]);
+    const disabled = catalogue.profiles.find((profile) => profile.id === "disabled");
+    if (!disabled) throw new Error("Expected disabled profile.");
+    expect(resolveProfileDefinition(disabled)).toMatchObject({
+      manifest: { enabled: false },
+      fieldSources: { enabled: "global" },
+    });
+    const defaultProfile = catalogue.profiles[0];
+    if (!defaultProfile) throw new Error("Expected default profile.");
+    expect(resolveProfileDefinition(defaultProfile)).toMatchObject({ manifest: { enabled: true } });
+    expect(
+      (await discoverProfileCatalogue({ ...options, projectTrusted: false })).profileIds,
+    ).toEqual(["default", "overridden"]);
+  });
+
   it("ignores untrusted ancestors and only checks the exact cwd outside Git", async () => {
     const roots = await sourceRoots();
     const nested = join(roots.root, "nested");
@@ -166,6 +207,55 @@ describe("discoverProfileCatalogue", () => {
     expect(catalogue.profileIds).toEqual(
       catalogue.profiles.slice(0, 32).map((profile) => profile.id),
     );
+  });
+
+  it("excludes disabled profiles before applying the sorted catalogue limit", async () => {
+    const roots = await sourceRoots();
+    for (let index = 0; index < 35; index += 1) {
+      await writeProfile(
+        roots.packageDirectory,
+        `profile-${String(index).padStart(2, "0")}`,
+        manifest({ enabled: index >= 2 }),
+      );
+    }
+    const catalogue = await discoverProfileCatalogue({
+      cwd: roots.root,
+      agentDir: roots.agentDirectory,
+      packageDirectory: roots.packageDirectory,
+      projectTrusted: false,
+    });
+
+    expect(catalogue.profiles).toHaveLength(35);
+    expect(catalogue.profileIds).toHaveLength(32);
+    expect(catalogue.profileIds[0]).toBe("profile-02");
+    expect(catalogue.profileIds.at(-1)).toBe("profile-33");
+    expect(catalogue.omittedProfileCount).toBe(1);
+    expect(catalogue.diagnostics).toEqual([
+      expect.objectContaining({ code: "catalogue-overflow" }),
+    ]);
+  });
+
+  it("keeps whole-source fallback for invalid enablement overrides", async () => {
+    const roots = await sourceRoots();
+    await writeProfile(roots.packageDirectory, "invalid-boolean", manifest());
+    await writeProfile(roots.globalDirectory, "invalid-boolean", { enabled: "false" });
+    await writeProfile(roots.packageDirectory, "invalid-model", manifest());
+    await writeProfile(roots.globalDirectory, "invalid-model", {
+      enabled: false,
+      model: "invalid",
+    });
+    const catalogue = await discoverProfileCatalogue({
+      cwd: roots.root,
+      agentDir: roots.agentDirectory,
+      packageDirectory: roots.packageDirectory,
+      projectTrusted: false,
+    });
+
+    expect(catalogue.profileIds).toEqual(["invalid-boolean", "invalid-model"]);
+    expect(catalogue.diagnostics).toEqual([
+      expect.objectContaining({ profileId: "invalid-boolean", code: "invalid-manifest" }),
+      expect.objectContaining({ profileId: "invalid-model", code: "invalid-manifest" }),
+    ]);
   });
 
   it("does not let invalid IDs consume effective catalogue slots", async () => {

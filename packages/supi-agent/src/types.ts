@@ -47,6 +47,8 @@ export type AgentThinkingLevel = ModelThinkingLevel;
 
 /** Closed profile.json manifest after field-level source resolution. */
 export interface AgentProfileManifest {
+  /** Optional availability override; omission inherits, with true as the default. Applied at catalogue refresh. */
+  readonly enabled?: boolean;
   /** Task-selection description for callers and the UI, non-empty and capped at 200 characters. */
   readonly description: string;
   /** Fixed child capability IDs; an empty list is valid. */
@@ -65,6 +67,7 @@ export interface AgentProfileManifest {
 
 /** Every field accepted in a profile.json manifest. */
 export const PROFILE_MANIFEST_FIELDS: readonly (keyof AgentProfileManifest)[] = [
+  "enabled",
   "description",
   "tools",
   "systemPrompt",
@@ -151,9 +154,9 @@ export interface ProfileCatalogue {
   readonly profiles: readonly ProfileCatalogueEntry[];
   /** Bounded invalid/overflow diagnostics for the visible catalogue snapshot. */
   readonly diagnostics: readonly ProfileDiagnostic[];
-  /** Sorted effective IDs exposed to execution, capped at MAX_PROFILE_COUNT. */
+  /** Sorted enabled, valid IDs exposed to execution, capped at MAX_PROFILE_COUNT. */
   readonly profileIds: readonly string[];
-  /** Number of additional effective IDs omitted by the catalogue cap. */
+  /** Number of additional enabled, valid IDs omitted by the catalogue cap. */
   readonly omittedProfileCount: number;
   /** Source roots used by discovery and field-level settings persistence. */
   readonly sourceDirectories: ProfileSourceDirectories;

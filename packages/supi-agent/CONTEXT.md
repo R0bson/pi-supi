@@ -8,6 +8,10 @@ Runs user-requested delegation through managed Agent Runs while keeping profiles
 A named user or trusted-project policy that supplies an Agent Run's instructions, model preferences, and allowed tools.
 _Avoid_: Agent type, role, preset
 
+**Disabled Agent Profile**:
+An Agent Profile that remains configured but is unavailable for selection or new Delegation Tasks.
+_Avoid_: Deleted profile, hidden profile
+
 **Profile Directory**:
 A Profile Directory definition containing a partial `profile.json` settings manifest and optional Markdown prompt assets. Package, global, and trusted-project Profile Directories are separate sources rather than entries in shared SuPi configuration.
 _Avoid_: Profile file, agents config entry, profile bundle
@@ -17,7 +21,7 @@ The stable name of a Profile Directory and the identifier used by Delegation Tas
 _Avoid_: Profile name field, agent name, source-qualified profile
 
 **Profile Catalogue**:
-The immutable, maximum-32 set of Profile IDs, source entries, and Profile Diagnostics retained for one extension runtime at session start or reload. Complete manifests are resolved during task preflight; the first 32 sorted IDs enter the model-facing schema and additional IDs are unavailable with diagnostics.
+The fixed collection of discovered Agent Profiles, their sources, availability, and Profile Diagnostics. Membership in the catalogue does not imply availability for Delegation Tasks.
 _Avoid_: Live profile registry, discovered agents
 
 **Profile Diagnostic**:

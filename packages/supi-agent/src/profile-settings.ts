@@ -10,6 +10,7 @@ import {
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  type BoolField,
   type EnumField,
   isSettingsContributionCollector,
   type ModelPickerField,
@@ -39,6 +40,15 @@ export const PROFILE_THINKING_LEVELS: readonly AgentThinkingLevel[] = [
   "xhigh",
   "max",
 ];
+
+type ProfileSettingField = "enabled" | "model" | "thinking";
+
+const ENABLED_FIELD: BoolField = {
+  kind: "boolean",
+  key: "enabled",
+  label: "Enabled",
+  description: "Enable this Agent Profile. Run /reload to apply changes.",
+};
 
 const MODEL_FIELD: ModelPickerField = {
   kind: "modelPicker",
@@ -71,7 +81,7 @@ export function createProfileSettingsSections(
   return catalogue.profiles.map((entry) => createProfileSettingsSection(entry, catalogue));
 }
 
-/** Build one Profile ID's Model and Thinking settings module. */
+/** Build one Profile ID's Enabled, Model, and Thinking settings module. */
 export function createProfileSettingsSection(
   entry: ProfileCatalogueEntry,
   catalogue: ProfileCatalogue,
@@ -82,9 +92,16 @@ export function createProfileSettingsSection(
     subsection: entry.id,
     read: async ({ scope }) => ({ rows: loadProfileSettings(entry, catalogue, scope) }),
     apply: async ({ scope, fieldKey, action }) => {
-      if (fieldKey !== "model" && fieldKey !== "thinking") return {};
+      if (fieldKey !== "enabled" && fieldKey !== "model" && fieldKey !== "thinking") return {};
       persistProfileField({ entry, catalogue, scope, field: fieldKey, action });
-      return {};
+      return fieldKey === "enabled"
+        ? {
+            notice: {
+              message: "Profile setting saved. Run /reload to apply this change.",
+              level: "info",
+            },
+          }
+        : {};
     },
   };
 }
@@ -99,6 +116,12 @@ function loadProfileSettings(
   const definition = resolveProfileDefinition(entry);
   if ("code" in definition) diagnostics.push(definition);
   const values: ScopedFieldValue[] = [
+    settingValue(
+      ENABLED_FIELD,
+      resolved.enabled,
+      resolved.enabledSource,
+      resolved.enabledInheritanceSource,
+    ),
     settingValue(
       MODEL_FIELD,
       resolved.model,
@@ -134,16 +157,16 @@ const diagnosticField = {
 };
 
 function settingValue(
-  field: ModelPickerField | EnumField,
-  value: string | undefined,
+  field: BoolField | ModelPickerField | EnumField,
+  value: string | boolean | undefined,
   source: "project" | "global" | "default",
   inheritanceSource?: "global" | "default",
 ): ScopedFieldValue {
-  const displayValue = value ?? "Inherit from session";
+  const editValue = typeof value === "boolean" ? (value ? "on" : "off") : (value ?? "");
   return {
     field,
-    displayValue: `${displayValue} (${source})`,
-    editValue: value ?? "",
+    displayValue: `${editValue || "Inherit from session"} (${source})`,
+    editValue,
     source,
     inheritanceSource,
   };
@@ -154,10 +177,13 @@ function resolveProfileSettings(
   catalogue: ProfileCatalogue,
   scope: SettingsScope,
 ): {
+  enabled: boolean;
   model?: string;
   thinking?: AgentThinkingLevel;
+  enabledSource: "project" | "global" | "default";
   modelSource: "project" | "global" | "default";
   thinkingSource: "project" | "global" | "default";
+  enabledInheritanceSource?: "global" | "default";
   modelInheritanceSource?: "global" | "default";
   thinkingInheritanceSource?: "global" | "default";
   diagnostics: ProfileDiagnostic[];
@@ -169,9 +195,13 @@ function resolveProfileSettings(
     candidate.diagnostic ? [candidate.diagnostic] : [],
   );
 
+  const enabled = resolveSetting(candidates, "enabled");
   const model = resolveSetting(candidates, "model");
   const thinking = resolveSetting(candidates, "thinking");
   return {
+    enabled: enabled?.value !== false,
+    enabledSource: toSettingsSource(enabled?.candidate.source),
+    enabledInheritanceSource: inheritanceSource(candidates, "enabled", enabled?.candidate.source),
     model: typeof model?.value === "string" ? model.value : undefined,
     thinking: isThinkingLevel(thinking?.value) ? thinking.value : undefined,
     modelSource: toSettingsSource(model?.candidate.source),
@@ -196,7 +226,7 @@ function sourceRoot(catalogue: ProfileCatalogue, source: ProfileSource): string 
 
 function resolveSetting(
   candidates: readonly ProfileCandidate[],
-  field: "model" | "thinking",
+  field: ProfileSettingField,
 ): { value: unknown; candidate: ProfileCandidate } | undefined {
   for (let index = candidates.length - 1; index >= 0; index -= 1) {
     const candidate = candidates[index];
@@ -214,7 +244,7 @@ function toSettingsSource(source: ProfileSource | undefined): "project" | "globa
 
 function inheritanceSource(
   candidates: readonly ProfileCandidate[],
-  field: "model" | "thinking",
+  field: ProfileSettingField,
   source: ProfileSource | undefined,
 ): "global" | "default" | undefined {
   if (source !== "project") return undefined;
@@ -237,7 +267,7 @@ function persistProfileField(options: {
   entry: ProfileCatalogueEntry;
   catalogue: ProfileCatalogue;
   scope: SettingsScope;
-  field: "model" | "thinking";
+  field: ProfileSettingField;
   action: SettingsAction;
 }): void {
   const { entry, catalogue, scope, field, action } = options;
@@ -246,7 +276,7 @@ function persistProfileField(options: {
 
   if (action.kind === "set" && !(field === "model" && action.value === "")) {
     validateSettingValue(field, action.value);
-    updateProfileJson(directory, field, action.value);
+    updateProfileJson(directory, field, field === "enabled" ? action.value === "on" : action.value);
     return;
   }
   removeProfileField(directory, field);
@@ -261,7 +291,11 @@ function writableProfileDirectory(
   return root ? join(root, entry.id) : undefined;
 }
 
-function validateSettingValue(field: "model" | "thinking", value: string): void {
+function validateSettingValue(field: ProfileSettingField, value: string): void {
+  if (field === "enabled") {
+    if (value !== "on" && value !== "off") throw new Error("Enabled must be on or off.");
+    return;
+  }
   if (field === "thinking") {
     if (!isThinkingLevel(value)) throw new Error("Thinking is not a supported PI thinking level.");
     return;
@@ -271,14 +305,18 @@ function validateSettingValue(field: "model" | "thinking", value: string): void 
   }
 }
 
-function updateProfileJson(directory: string, field: "model" | "thinking", value: string): void {
+function updateProfileJson(
+  directory: string,
+  field: ProfileSettingField,
+  value: string | boolean,
+): void {
   const data = readProfileJson(directory);
   mkdirSync(directory, { recursive: true });
   data[field] = value;
   writeFileSync(join(directory, "profile.json"), `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-function removeProfileField(directory: string, field: "model" | "thinking"): void {
+function removeProfileField(directory: string, field: ProfileSettingField): void {
   const profilePath = join(directory, "profile.json");
   if (!existsSync(profilePath)) return;
   const data = readProfileJson(directory);
