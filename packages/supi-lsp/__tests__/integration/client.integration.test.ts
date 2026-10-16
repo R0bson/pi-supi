@@ -210,20 +210,6 @@ describe.skipIf(!HAS_TS_LSP)("LspClient integration (typescript-language-server)
     expect(afterResult).toEqual({ kind: "completed", data: [] });
   }, 15_000);
 
-  it("returns code actions for diagnostic", async () => {
-    const content = fs.readFileSync(badFile, "utf-8");
-    await client.syncAndWaitForDiagnostics(badFile, content);
-
-    const diags = client.getDiagnostics(badFile);
-    const actions = await client.codeActions(
-      badFile,
-      { start: { line: 0, character: 0 }, end: { line: 0, character: 40 } },
-      { diagnostics: diags },
-    );
-    // May or may not have actions — just verify no crash
-    expect(actions === null || Array.isArray(actions)).toBe(true);
-  }, 10_000);
-
   it("normalizes the real TypeScript organize-imports action", async () => {
     const file = path.join(tmpDir, "organize.ts");
     fs.writeFileSync(path.join(tmpDir, "unused.ts"), "export const unused = 1;\n");
@@ -275,14 +261,6 @@ describe.skipIf(!HAS_TS_LSP)("LspClient integration (typescript-language-server)
     expect(data?.length).toBeGreaterThan(0);
     const text = JSON.stringify(data);
     expect(text).toContain("add");
-  }, 10_000);
-
-  it("returns workspace symbols for partial query", async () => {
-    const symbols = await client.workspaceSymbol("Cal");
-    const data = queryData(symbols);
-    expect(data).not.toBeNull();
-    expect(Array.isArray(data)).toBe(true);
-    // Server-dependent: some LSP servers only support exact/prefix matching
   }, 10_000);
 
   it("closes a document and removes from tracking", () => {

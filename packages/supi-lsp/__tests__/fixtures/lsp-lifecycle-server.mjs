@@ -139,6 +139,11 @@ function handle(message) {
     setTimeout(() => process.exit(17), delayMs);
     return;
   }
+  if (message.method === "initialized" && (mode === "stable" || mode === "crash-once")) {
+    // Recovery tests need a ready replacement, not the no-progress grace period.
+    runProgressSequence("normal", 1);
+    return;
+  }
   if (message.method === "workspace/symbol") {
     send({
       jsonrpc: "2.0",

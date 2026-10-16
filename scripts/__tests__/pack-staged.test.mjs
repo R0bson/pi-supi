@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { makeNestedPackageFixture } from "./helpers/pack-fixture.mjs";
 
 // pack-staged runs npm pack which is slow
 const SLOW_TIMEOUT = 120_000;
@@ -102,72 +103,51 @@ describe("packStaged clean manifest", () => {
     expect(entries).toContain("package/src/index.js");
   });
 
-  it("produces npm-compatible root manifest for packages/supi-lsp", {
+  it("rewrites LSP root and bundled manifests and preserves bundled dependencies", {
     timeout: SLOW_TIMEOUT,
   }, async () => {
     tarball = await packStaged("packages/supi-lsp", { outDir });
 
     const pkg = extractJson(tarball, "package/package.json");
-
-    // Root manifest must not contain workspace: protocol
-    const pkgStr = JSON.stringify(pkg);
-    expect(pkgStr).not.toContain("workspace:");
-
-    // No devDependencies should leak into publish manifest
+    expect(JSON.stringify(pkg)).not.toContain("workspace:");
     expect(pkg.devDependencies).toBeUndefined();
-
-    // bundledDependencies should remain
     expect(Array.isArray(pkg.bundledDependencies)).toBe(true);
     expect(pkg.bundledDependencies.length).toBeGreaterThan(0);
-  });
 
-  it("produces npm-compatible bundled sub-package manifests for packages/supi-lsp", {
-    timeout: SLOW_TIMEOUT,
-  }, async () => {
-    tarball = await packStaged("packages/supi-lsp", { outDir });
-
-    // supi-lsp bundles supi-core
-    const corePkg = extractJson(tarball, "package/node_modules/@mrclrchtr/supi-core/package.json");
-    const coreStr = JSON.stringify(corePkg);
-    expect(coreStr).not.toContain("workspace:");
-    expect(corePkg.devDependencies).toBeUndefined();
-  });
-
-  it("does not remove bundledDependencies from manifests", { timeout: SLOW_TIMEOUT }, async () => {
-    tarball = await packStaged("packages/supi-lsp", { outDir });
-
-    const pkg = extractJson(tarball, "package/package.json");
     const sourcePkg = JSON.parse(
       readFileSync(join(process.cwd(), "packages/supi-lsp/package.json"), "utf8"),
     );
     expect(pkg.bundledDependencies).toEqual(sourcePkg.bundledDependencies);
 
-    // The bundled sub-package may or may not have its own bundledDependencies,
-    // but if it does they should be preserved
     const corePkg = extractJson(tarball, "package/node_modules/@mrclrchtr/supi-core/package.json");
-    // supi-core doesn't have bundledDeps in source, so it should stay absent
+    expect(JSON.stringify(corePkg)).not.toContain("workspace:");
+    expect(corePkg.devDependencies).toBeUndefined();
     expect(corePkg.bundledDependencies).toBeUndefined();
   });
 
-  it("packs packages/supi-code-intelligence despite transitive dev-dependency cycles", {
+  it("rewrites nested workspace bundles without copying a transitive development cycle", {
     timeout: SLOW_TIMEOUT,
   }, async () => {
-    tarball = await packStaged("packages/supi-code-intelligence", { outDir });
+    tarball = await packStaged(makeNestedPackageFixture(outDir), { outDir });
+    const childPath = "package/node_modules/@mrclrchtr/fixture-child";
+    const leafPath = `${childPath}/node_modules/@mrclrchtr/fixture-leaf`;
+    const entries = listTarballEntries(tarball);
+    const manifests = entries.filter((entry) => entry.endsWith("/package.json"));
+    expect(manifests.sort()).toEqual(
+      ["package/package.json", `${childPath}/package.json`, `${leafPath}/package.json`].sort(),
+    );
 
-    const pkg = extractJson(tarball, "package/package.json");
-    expect(pkg.name).toBe("@mrclrchtr/supi-code-intelligence");
-  });
-
-  it("rewrites deeply bundled Review manifests without workspace protocol", {
-    timeout: SLOW_TIMEOUT,
-  }, async () => {
-    tarball = await packStaged("packages/supi-review", { outDir });
-    const manifests = listTarballEntries(tarball).filter((entry) => entry.endsWith("package.json"));
-
-    for (const manifestPath of manifests) {
-      const manifest = extractJson(tarball, manifestPath);
-      expect(JSON.stringify(manifest)).not.toContain("workspace:");
-    }
+    const app = extractJson(tarball, "package/package.json");
+    expect(app.dependencies).toEqual({ "@mrclrchtr/fixture-child": "2.3.4" });
+    expect(app.bundledDependencies).toEqual(["@mrclrchtr/fixture-child"]);
+    const child = extractJson(tarball, `${childPath}/package.json`);
+    expect(child.dependencies).toEqual({ "@mrclrchtr/fixture-leaf": "^3.4.5" });
+    expect(child.bundledDependencies).toEqual(["@mrclrchtr/fixture-leaf"]);
+    const leaf = extractJson(tarball, `${leafPath}/package.json`);
+    expect(leaf.name).toBe("@mrclrchtr/fixture-leaf");
+    expect(leaf.version).toBe("3.4.5");
+    expect(leaf.devDependencies).toBeUndefined();
+    expect(entries).toContain(`${leafPath}/src/index.js`);
   });
 
   it("publishes explicit api and extension subpaths for packages/supi-ask-user", {

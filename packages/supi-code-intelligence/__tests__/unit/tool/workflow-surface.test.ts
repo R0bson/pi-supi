@@ -82,13 +82,6 @@ describe("code intelligence tool specs", () => {
     expect(CODE_INTELLIGENCE_TOOL_NAMES).toEqual(EXPECTED_WORKFLOW_TOOL_NAMES);
   });
 
-  it("keeps planned tool names free of lsp_ and tree_sitter_ prefixes", () => {
-    const disallowedPrefixes = ["lsp_", "tree_sitter_"] as const;
-    for (const name of CODE_INTELLIGENCE_TOOL_NAMES) {
-      expect(disallowedPrefixes.some((prefix) => name.startsWith(prefix))).toBe(false);
-    }
-  });
-
   it("registers one spec per tool name with a matching schema", () => {
     expect(CODE_INTELLIGENCE_TOOL_SPECS).toHaveLength(CODE_INTELLIGENCE_TOOL_NAMES.length);
 

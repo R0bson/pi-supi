@@ -28,7 +28,7 @@ function readLog(logPath: string): LogEntry[] {
 
 function createConfig(
   logPath: string,
-  responseDelayMs = 300,
+  responseDelayMs: number,
   supportsDiagnostics = false,
 ): LspConfig {
   return {
@@ -44,7 +44,7 @@ function createConfig(
 }
 
 function setupWorkspace(
-  responseDelayMs = 300,
+  responseDelayMs = 0,
   supportsDiagnostics = false,
 ): {
   cwd: string;
@@ -226,7 +226,7 @@ describe("public WorkspaceLspRuntime semantic input barrier", () => {
   });
 
   it("propagates cancellation after a semantic request starts", async () => {
-    workspace = setupWorkspace();
+    workspace = setupWorkspace(300);
     const { consumer, logPath, owner } = workspace;
     await owner.runtime.trackFile(consumer);
     const controller = new AbortController();
@@ -280,7 +280,7 @@ describe("public WorkspaceLspRuntime semantic input barrier", () => {
   });
 
   it("rejects a semantic result after an open input closes", async () => {
-    workspace = setupWorkspace();
+    workspace = setupWorkspace(300);
     const { dependency, consumer, logPath, owner } = workspace;
     await owner.runtime.trackFile(dependency);
     await owner.runtime.trackFile(consumer);
@@ -298,7 +298,7 @@ describe("public WorkspaceLspRuntime semantic input barrier", () => {
   });
 
   it("rejects a semantic result when an input changes during the request", async () => {
-    workspace = setupWorkspace();
+    workspace = setupWorkspace(300);
     const { dependency, consumer, logPath, owner } = workspace;
     await owner.runtime.trackFile(dependency);
     await owner.runtime.trackFile(consumer);

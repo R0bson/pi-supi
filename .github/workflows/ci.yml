@@ -60,7 +60,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pnpm exec commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
-  verify:
+  workspace-checks:
     runs-on: ubicloud-standard-2
     timeout-minutes: 15
 
@@ -88,11 +88,58 @@ jobs:
             exit 1
           fi
 
+      - name: Check vendored WASM files
+        run: pnpm --filter @mrclrchtr/supi-tree-sitter check:all-wasm
+
+      - name: Check code style
+        run: pnpm biome
+
+      - name: Check TypeScript
+        run: pnpm typecheck
+
+      - name: Check skills
+        run: pnpm skills:check
+
+      - name: Verify staged package tarballs
+        run: pnpm pack:verify
+
+  tests:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-pnpm
+
       - name: Install ripgrep
         run: sudo apt-get install -y ripgrep
 
-      - name: Verify workspace and staged package tarballs
-        run: pnpm verify
+      - name: Run test shard
+        run: pnpm test --shard=${{ matrix.shard }}/4
+
+  verify:
+    if: always()
+    needs: [workspace-checks, tests]
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+
+    steps:
+      - name: Require all verification jobs to pass
+        env:
+          WORKSPACE_RESULT: ${{ needs.workspace-checks.result }}
+          TEST_RESULT: ${{ needs.tests.result }}
+        run: |
+          if [[ "$WORKSPACE_RESULT" != "success" || "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Verification failed: workspace=$WORKSPACE_RESULT tests=$TEST_RESULT"
+            exit 1
+          fi
 
   release-please:
     needs: [actionlint, conventional-commits, verify]
