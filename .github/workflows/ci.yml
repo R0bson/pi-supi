@@ -124,9 +124,32 @@ jobs:
       - name: Run test shard
         run: pnpm test --shard=${{ matrix.shard }}/4
 
+  installer:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["24"]
+        include:
+          - os: ubuntu-latest
+            node: "22.19.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Check installer types
+        run: pnpm exec tsc -b packages/supi-installer/tsconfig.json packages/supi-installer/__tests__/tsconfig.json
+      - name: Check installer behavior
+        run: pnpm vitest run packages/supi-installer/ --reporter=agent
+
   verify:
     if: always()
-    needs: [workspace-checks, tests]
+    needs: [workspace-checks, tests, installer]
     runs-on: ubicloud-standard-2
     timeout-minutes: 5
 
@@ -135,9 +158,10 @@ jobs:
         env:
           WORKSPACE_RESULT: ${{ needs.workspace-checks.result }}
           TEST_RESULT: ${{ needs.tests.result }}
+          INSTALLER_RESULT: ${{ needs.installer.result }}
         run: |
-          if [[ "$WORKSPACE_RESULT" != "success" || "$TEST_RESULT" != "success" ]]; then
-            echo "::error::Verification failed: workspace=$WORKSPACE_RESULT tests=$TEST_RESULT"
+          if [[ "$WORKSPACE_RESULT" != "success" || "$TEST_RESULT" != "success" || "$INSTALLER_RESULT" != "success" ]]; then
+            echo "::error::Verification failed: workspace=$WORKSPACE_RESULT tests=$TEST_RESULT installer=$INSTALLER_RESULT"
             exit 1
           fi
 

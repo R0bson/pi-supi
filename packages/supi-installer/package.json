@@ -1,0 +1,30 @@
+{
+  "name": "@mrclrchtr/supi-installer",
+  "version": "9.0.0",
+  "description": "Select SuPi packages in project and global PI scopes",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mrclrchtr/supi.git",
+    "directory": "packages/supi-installer"
+  },
+  "bin": {
+    "supi-installer": "bin/supi-installer.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "cross-spawn": "^7.0.6",
+    "string-width": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6"
+  }
+}

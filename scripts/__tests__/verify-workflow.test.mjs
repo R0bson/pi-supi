@@ -12,6 +12,7 @@ function job(name) {
 const workspace = job("workspace-checks");
 const tests = job("tests");
 const verify = job("verify");
+const installer = job("installer");
 const gate =
   verify.match(/^ {8}run: \|\n((?: {10}.*\n)+)/m)?.[1]?.replace(/^ {10}/gm, "") ?? "exit 99";
 
@@ -43,11 +44,19 @@ describe("parallel verification workflow", () => {
   });
 
   it("keeps verify as the required result and release dependency", () => {
-    expect(verify).toContain("needs: [workspace-checks, tests]");
+    expect(verify).toContain("needs: [workspace-checks, tests, installer]");
     expect(verify).toContain("if: always()");
     expect(verify).toContain("WORKSPACE_RESULT: ${{ needs.workspace-checks.result }}");
     expect(verify).toContain("TEST_RESULT: ${{ needs.tests.result }}");
     expect(job("release-please")).toContain("needs: [actionlint, conventional-commits, verify]");
+  });
+
+  it("checks the CLI on supported systems and the minimum Node runtime", () => {
+    expect(installer).toContain("os: [ubuntu-latest, macos-latest, windows-latest]");
+    expect(installer).toContain('node: ["24"]');
+    expect(installer).toContain('node: "22.19.0"');
+    expect(installer).toContain("pnpm vitest run packages/supi-installer/ --reporter=agent");
+    expect(verify).toContain("INSTALLER_RESULT: ${{ needs.installer.result }}");
   });
 
   it.each([
@@ -67,9 +76,26 @@ describe("parallel verification workflow", () => {
           ...process.env,
           WORKSPACE_RESULT: workspaceResult,
           TEST_RESULT: testResult,
+          INSTALLER_RESULT: "success",
         },
       });
       expect(result.status, result.stderr).toBe(status);
+    },
+  );
+
+  it.each(["failure", "cancelled", "skipped"])(
+    "rejects an installer job result of %s",
+    (result) => {
+      const check = spawnSync("bash", ["-e", "-o", "pipefail", "-c", gate], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          WORKSPACE_RESULT: "success",
+          TEST_RESULT: "success",
+          INSTALLER_RESULT: result,
+        },
+      });
+      expect(check.status).toBe(1);
     },
   );
 });

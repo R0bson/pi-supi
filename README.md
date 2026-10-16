@@ -45,35 +45,29 @@ Tree-sitter support is bundled. Full LSP features require the matching language-
 
 After any installation, run `/reload` or restart Pi.
 
-### Recommended release stack
+### Select packages and scopes
 
-Global installation:
+Install PI and make sure `pi` is on `PATH`. Open PI in the target project and use `/trust` to save project approval. Then run the [SuPi installer](packages/supi-installer/README.md):
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/mrclrchtr/supi/main/scripts/install.sh | bash
+```sh
+npx @mrclrchtr/supi-installer@latest
 ```
 
-Project-local installation into `.pi/settings.json`:
+Each package row has **Project** and **Global** checkboxes. They represent direct declarations in those scopes, not whether a capability is active. Choose packages, press Enter to review additions and removals, then press `y` to confirm.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/mrclrchtr/supi/main/scripts/install.sh | bash -s -- -l
+- `r`: replace the focused column with the Recommended release stack.
+- `a`: select All current packages in that column, including beta packages, DevTools, Consulting, and Prompt Improver.
+- `c`: clear editable declarations in that column.
+
+To target another project directory:
+
+```sh
+npx @mrclrchtr/supi-installer@latest --project /path/to/project
 ```
 
-### Release stack plus beta packages
+The installer requires saved project trust even for global-only work. It never grants trust or installs PI. Clearing Project does not disable a global declaration. Removal keeps user data. If a scope move fails, source removal can still run; review the failure warning before confirmation.
 
-Global installation:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mrclrchtr/supi/main/scripts/install-all.sh | bash
-```
-
-Project-local installation into `.pi/settings.json`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mrclrchtr/supi/main/scripts/install-all.sh | bash -s -- -l
-```
-
-> Pi extensions run with your user permissions. Review [`install.sh`](scripts/install.sh) or [`install-all.sh`](scripts/install-all.sh) before piping either script to a shell.
+> PI extensions run with your user permissions. Review packages before installing them.
 
 ### One package
 
@@ -114,7 +108,7 @@ npx skills add mrclrchtr/supi --skill code-review research
 
 ### DevTools
 
-Not part of the recommended release stack. Included in the full-stack installer (`install-all.sh`), or install separately:
+Not part of the Recommended release stack. Select these packages individually, use All in the installer, or install them separately:
 
 | Package | What it adds | Install |
 |---|---|---|
@@ -122,7 +116,7 @@ Not part of the recommended release stack. Included in the full-stack installer 
 
 ### Beta additions
 
-Most packages in this section are installed by `install-all.sh` on top of the release stack. `supi-consulting` is an opt-in **Agent** package and is not included in either installer:
+Select beta packages individually or use All in the installer. Consulting is opt-in and is not part of Recommended:
 
 | Package | What it adds | Install |
 |---|---|---|
@@ -133,6 +127,10 @@ Most packages in this section are installed by `install-all.sh` on top of the re
 | [`supi-insights`](packages/supi-insights/README.md) | Historical session analytics and shareable HTML reports | `pi install npm:@mrclrchtr/supi-insights` |
 | [`supi-claude-md`](packages/supi-claude-md/README.md) | Skills for auditing and revising repository instruction files | `pi install npm:@mrclrchtr/supi-claude-md` |
 | [`supi-bash-timeout`](packages/supi-bash-timeout/README.md) | Default timeouts so forgotten shell limits do not stall the session | `pi install npm:@mrclrchtr/supi-bash-timeout` |
+
+### Additional package
+
+- [`supi-prompt-improver`](packages/supi-prompt-improver/README.md) — command-based prompt improvement with user-approved drafts. Select it in the installer or run `pi install npm:@mrclrchtr/supi-prompt-improver`.
 
 ### Internal libraries
 
@@ -171,7 +169,7 @@ $code-review Review the current changes.
 
 Project choices inherit your global choices. Run `/reload` after you change whether a skill loads, or after you add or remove skills. Install `supi-extras` to hide model-visible skills for one session. This does not change explicit skill commands or `$skill-name` shortcuts.
 
-The release installers include both `supi-skills` and `supi-settings`. For a standalone installation with skill controls, install both packages:
+The Recommended preset includes both `supi-skills` and `supi-settings`. For a standalone installation with skill controls, install both packages:
 
 ```bash
 pi install npm:@mrclrchtr/supi-settings
@@ -188,17 +186,13 @@ Update installed Pi packages:
 pi update --extensions
 ```
 
-Remove the SuPi stack (release + beta packages):
+To remove selected SuPi packages, open the installer and clear their scope checkboxes. Use `c` to clear the focused column, then review and confirm:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/mrclrchtr/supi/main/scripts/uninstall.sh | bash
+```sh
+npx @mrclrchtr/supi-installer@latest
 ```
 
-For project-local removal, add `-l`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mrclrchtr/supi/main/scripts/uninstall.sh | bash -s -- -l
-```
+Unknown sources remain unchanged. Recognized Git/local or legacy root installs need manual removal through PI. The old shell installer commands have been retired.
 
 Remove one package:
 

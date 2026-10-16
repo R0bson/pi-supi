@@ -19,6 +19,7 @@
         "packages/supi-debug/package.json",
         "packages/supi-extras/package.json",
         "packages/supi-insights/package.json",
+        "packages/supi-installer/package.json",
         "packages/supi-lsp/package.json",
         "packages/supi-prompt-improver/package.json",
         "packages/supi-prompt-suggestions/package.json",

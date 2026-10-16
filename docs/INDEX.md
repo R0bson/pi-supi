@@ -22,6 +22,7 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 | Doc | Answers | Read when |
 | --- | --- | --- |
 | `conventions/package-layout.md` | Package directory structure, boundary files (`api.ts` / `index.ts` / `extension.ts`), test layout, per-package target matrix | You create a package or do structural work on one |
+| [Installer design](conventions/installer.md) | Approved npx CLI design: two-scope Installation Matrix, presets, trust, source limits, failures, and verification requirements | You implement or change the SuPi installer |
 | `conventions/tool-architecture.md` | Internal architecture for tool packages: per-tool directory layout, spec/guidance modules, workflow, result assembly, presentation adapters, PI adapter, context-channel ownership | You add or restructure a package that registers tools |
 | `conventions/tool-rendering.md` | Transcript rendering: `renderCall`/`renderResult`, `details` contract, collapsed/expanded/partial/error states | You add or change tool renderers |
 | `conventions/code-runtime-architecture.md` | Ownership split of the code stack: `supi-code-intelligence`, `supi-lsp`, `supi-tree-sitter`, `supi-code-runtime` | You work on the code-understanding stack |
@@ -32,6 +33,7 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 - [ADR 0023: PI-owned model requests](adr/0023-pi-owned-model-requests.md) — shared direct request handling, separate routing identities, and Agent Run endpoint preservation.
 - [ADR 0024: Shared code-intelligence exclusions](adr/0024-shared-code-intelligence-exclusions.md) — one configured list for automatic LSP work and broad AST searches.
 - [ADR 0022: Request-confirmed, LSP-agnostic diagnostics](adr/0022-request-confirmed-lsp-agnostic-diagnostics.md) — current diagnostic source, confirmation, scheduling, and coverage policy; supersedes the diagnostic-confirmation parts of ADR 0020.
+- [ADR 0025: Installation Matrix declarations](adr/0025-installation-matrix-declarations.md) — direct package declarations stay separate from effective resource activation.
 - `agents/` — issue tracker and triage workflow for agent work in this repo.
 
 ## ops/

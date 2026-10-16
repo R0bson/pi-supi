@@ -1,6 +1,10 @@
 # Shared workflow setup. Keep third-party actions pinned by SHA.
 name: Setup pnpm workspace
 description: Setup Node.js and pnpm, restore cache, and install dependencies
+inputs:
+  node-version:
+    description: Node.js runtime version
+    default: "24"
 runs:
   using: composite
   steps:
@@ -11,7 +15,7 @@ runs:
     - name: Setup Node.js
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version: 24
+        node-version: ${{ inputs.node-version }}
         registry-url: "https://registry.npmjs.org"
         cache: pnpm
 

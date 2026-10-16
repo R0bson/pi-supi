@@ -46,6 +46,14 @@ _Avoid_: root stack, standard stack, release stack
 A SuPi package that can be installed into PI and registers extension behavior such as tools, commands, event handlers, settings, or UI.
 _Avoid_: plugin package, module
 
+**Installation Matrix**:
+A SuPi installer view with one row for each selectable Extension Package and separate project and global selection columns. A selected cell means a direct package declaration in that scope, not that the package's capabilities are active there.
+_Avoid_: scope chooser, tool activation checklist
+
+**Installation Preset**:
+A named set of Extension Packages that defines a complete desired selection for one Installation Matrix column. It is distinct from an added package group.
+_Avoid_: additive shortcut, install profile
+
 **Infrastructure Package**:
 A SuPi package that supports other packages but is not promoted as a directly installed PI extension. Infrastructure packages should still be linked from the root README, but separately from user-facing extension packages.
 _Avoid_: internal package, hidden package
