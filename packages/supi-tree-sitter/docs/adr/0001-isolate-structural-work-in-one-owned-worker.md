@@ -18,6 +18,10 @@ Each shared workspace lifecycle and each explicitly owned `TreeSitterSession` ow
 
 The child process starts with `--liftoff-only`. This stops the optimizing WebAssembly compiler that caused the LaTeX memory spike. The setting applies to all grammars in that process, but it does not change V8 in Pi's process. The process host starts the Worker with `execArgv: []` and clears `NODE_OPTIONS`; the Worker still loads TypeScript through the package's direct `jiti` dependency.
 
+A Node parent uses its current executable. A Bun parent, including a compiled application, resolves and validates `node` on `PATH` with a bounded probe. It must not fork the compiled parent executable. Missing Node makes structural capability unavailable with an installation message. There is no automatic download or Bun Worker fallback.
+
+Node-to-Node IPC retains advanced serialization. Bun-to-Node IPC uses JSON because the runtimes have different binary serialization formats. The process host encodes result chunks as base64. The parent checks encoded message size, bounds and validates base64, then restores binary chunks before private protocol validation. The Worker-thread protocol, cancellation flags, and fixed limits do not change.
+
 The Worker owns source reads, canonical paths, parser and grammar initialization, all WASM values, parsed-file and query caches, extraction, filtering, result shaping, and UTF-16 coordinate conversion. The parent owns validation, one FIFO mailbox, request identity, cancellation timers, Worker generations, bounded result assembly, and Debug Registry publication.
 
 The package-owned `src/worker/process-host.mjs` forwards protocol messages between Pi and the Worker. Startup failure makes structural capability unavailable. Production has no main-thread fallback.
@@ -63,4 +67,10 @@ pnpm --filter @mrclrchtr/supi-tree-sitter check:all-wasm
 - A Worker restart discards all parser, tree, query, language, and cache state.
 - Raw runtime and extraction helpers are no longer public APIs.
 - Worker startup adds one package-local TypeScript loader dependency.
+- Bun installations need Node on `PATH` for structural analysis.
 - Results that exceed fixed protocol limits fail explicitly instead of truncating evidence.
+
+## Sources
+
+- [Issue 501: Structural Worker startup under compiled Bun](https://github.com/mrclrchtr/supi/issues/501)
+- [Bun IPC between Bun and Node.js](https://bun.sh/docs/api/spawn#ipc-between-bun-node-js)

@@ -1,6 +1,8 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
+import { decodeStructuralWorkerJsonMessage } from "./structural-worker-json.ts";
+import { resolveStructuralWorkerNode } from "./structural-worker-node.ts";
 import type {
   ParentToStructuralWorkerMessage,
   StructuralWorkerToParentMessage,
@@ -23,23 +25,28 @@ export function createStructuralWorkerProcess(options: {
   readonly generation: number;
 }): StructuralWorkerLike {
   const hostPath = fileURLToPath(new URL("../worker/process-host.mjs", import.meta.url));
+  const jsonIpc = Boolean(process.versions.bun);
+  const args = [options.cwd, String(options.generation), ...(jsonIpc ? ["json"] : [])];
   // A child process accepts the V8 flag that a Worker thread rejects.
-  const child = fork(hostPath, [options.cwd, String(options.generation)], {
+  const child = fork(hostPath, args, {
+    execPath: resolveStructuralWorkerNode(),
     execArgv: ["--liftoff-only"],
     env: { ...process.env, NODE_OPTIONS: "" },
-    serialization: "advanced",
+    serialization: jsonIpc ? "json" : "advanced",
     stdio: ["ignore", "ignore", "inherit", "ipc"],
     windowsHide: true,
   });
-  return new StructuralWorkerProcess(child);
+  return new StructuralWorkerProcess(child, jsonIpc);
 }
 
 class StructuralWorkerProcess implements StructuralWorkerLike {
   readonly #events = new EventEmitter();
   readonly #child: ChildProcess;
+  readonly #jsonIpc: boolean;
 
-  constructor(child: ChildProcess) {
+  constructor(child: ChildProcess, jsonIpc: boolean) {
     this.#child = child;
+    this.#jsonIpc = jsonIpc;
     child.on("message", (value: unknown) => this.#receive(value));
     child.on("error", (error) => this.#events.emit("error", error));
     child.on("exit", (code) => this.#events.emit("exit", code ?? 1));
@@ -96,7 +103,16 @@ class StructuralWorkerProcess implements StructuralWorkerLike {
       this.#events.emit("error", new Error(value.message.message));
       return;
     }
-    this.#events.emit("message", value.message);
+    let message: unknown = value.message;
+    if (this.#jsonIpc) {
+      try {
+        message = decodeStructuralWorkerJsonMessage(message);
+      } catch (error) {
+        this.#events.emit("error", error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+    }
+    this.#events.emit("message", message);
   }
 }
 

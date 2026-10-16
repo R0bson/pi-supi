@@ -1,8 +1,13 @@
 import { Worker } from "node:worker_threads";
 
-const [cwd, generationValue] = process.argv.slice(2);
+const [cwd, generationValue, serialization = "advanced"] = process.argv.slice(2);
 const generation = Number(generationValue);
-if (!cwd || !Number.isSafeInteger(generation) || generation < 1) {
+if (
+  !cwd ||
+  !Number.isSafeInteger(generation) ||
+  generation < 1 ||
+  !["advanced", "json"].includes(serialization)
+) {
   throw new Error("Structural Worker process received invalid startup data");
 }
 
@@ -76,7 +81,19 @@ function isParentChannel(value) {
 }
 
 function send(message, callback) {
-  if (process.connected && process.send) process.send(message, callback);
+  if (!process.connected || !process.send) return;
+  // Bun and Node use different binary IPC formats. Keep the thread protocol unchanged.
+  const forwarded =
+    serialization === "json" && message.message.kind === "chunk"
+      ? {
+          ...message,
+          message: {
+            ...message.message,
+            payload: Buffer.from(message.message.payload).toString("base64"),
+          },
+        }
+      : message;
+  process.send(forwarded, callback);
 }
 
 function disconnect() {

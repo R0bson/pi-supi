@@ -26,6 +26,8 @@ For local development, run `pi install ./packages/supi-code-intelligence` from t
 
 This package is included in the SuPi release installer. SuPi remains pre-release. The package bundles its LSP and Tree-sitter runtime dependencies, but not language-server binaries.
 
+Under Bun, including compiled applications such as Pi-Bolt, structural analysis also requires a Node.js executable named `node` on `PATH`. The parser runs in a protected Node child process, not in Bun. If Node.js is unavailable, structural analysis reports an installation error; LSP startup remains separate.
+
 ## What it adds
 
 - **Language Server Protocol (LSP) tools** for types, definitions, references, implementations, diagnostics, workspace symbols, and semantic refactoring.
