@@ -50,6 +50,8 @@ function setupSession(options: { id?: string; tools?: Tool[]; active?: string[] 
 
   const ctx = makeCtx({
     mode: "tui",
+    isIdle: () => true,
+    waitForIdle: async () => {},
     sessionManager: {
       getSessionId: () => id,
       getSessionFile: () => undefined,
@@ -249,7 +251,7 @@ describe("session capability controls", () => {
     expect(sessionCapabilityState.get("capability-lifecycle-test")?.toolDenylist).toEqual([]);
   });
 
-  it("keeps unresolved tool restrictions and prunes absent skills from the provider inventory", async () => {
+  it("keeps unresolved tool restrictions and absent skill exclusions", async () => {
     const session = setupSession({ id: "capability-prune-test" });
     const savedState = {
       version: 1 as const,
@@ -286,7 +288,7 @@ describe("session capability controls", () => {
       eligibleToolNames: ["tool-active", "missing-tool"],
       initiallyInactiveToolNames: ["tool-inactive"],
       toolDenylist: ["tool-active", "missing-tool"],
-      hiddenSkillNames: [],
+      hiddenSkillNames: ["missing-skill"],
     });
     dispose();
   });

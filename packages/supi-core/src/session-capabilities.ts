@@ -1,3 +1,9 @@
+import {
+  decodeSessionCapabilityProfileSnapshot,
+  type SessionCapabilityProfile,
+  type SessionCapabilityProfileSnapshot,
+} from "./session-capability-profiles.ts";
+
 /** Session-only tool and skill visibility state. */
 export interface SessionCapabilityState {
   version: 1;
@@ -7,6 +13,8 @@ export interface SessionCapabilityState {
   /** Tools that the user explicitly enabled for this session. */
   toolEnabledNames?: string[];
   hiddenSkillNames: string[];
+  /** Original profile identity and exclusions. Later configuration changes do not affect this copy. */
+  profileSnapshot?: SessionCapabilityProfileSnapshot;
 }
 
 /** A model-visible skill that a provider can offer to the selector. */
@@ -94,8 +102,9 @@ export function decodeSessionCapabilities(value: unknown): SessionCapabilityStat
     (name) => !initiallyInactive.has(name),
   );
   const eligible = new Set(eligibleToolNames);
-  const toolDenylist = stringList(record.toolDenylist).filter((name) => eligible.has(name));
+  const toolDenylist = stringList(record.toolDenylist);
   const denied = new Set(toolDenylist);
+  const profileSnapshot = decodeSessionCapabilityProfileSnapshot(record.profileSnapshot);
 
   return {
     version: 1,
@@ -106,7 +115,52 @@ export function decodeSessionCapabilities(value: unknown): SessionCapabilityStat
       (name) => eligible.has(name) && !denied.has(name),
     ),
     hiddenSkillNames: stringList(record.hiddenSkillNames),
+    ...(profileSnapshot ? { profileSnapshot } : {}),
   };
+}
+
+/** Copy current exclusion sets for saving. Do not use inventory to remove names. */
+export function captureSessionCapabilityExclusions(
+  state: SessionCapabilityState,
+): SessionCapabilityProfile {
+  return {
+    excludedTools: [...new Set(state.toolDenylist)],
+    hiddenSkills: [...new Set(state.hiddenSkillNames)],
+  };
+}
+
+/**
+ * Replace exclusions and capture a profile copy. Return undefined for an invalid profile.
+ * Do not mutate the input state or activate tools. The caller owns runtime restoration.
+ */
+export function applySessionCapabilityProfile(
+  state: SessionCapabilityState,
+  profile: unknown,
+): SessionCapabilityState | undefined {
+  const profileSnapshot = decodeSessionCapabilityProfileSnapshot(profile);
+  if (!profileSnapshot) return undefined;
+  return decodeSessionCapabilities({
+    ...state,
+    toolDenylist: profileSnapshot.excludedTools,
+    hiddenSkillNames: profileSnapshot.hiddenSkills,
+    profileSnapshot,
+  });
+}
+
+function equalNameSets(left: readonly string[], right: readonly string[]): boolean {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return leftSet.size === rightSet.size && [...leftSet].every((name) => rightSet.has(name));
+}
+
+/** Compare current exclusions with the applied copy. No profile means no Modified marker. */
+export function isSessionCapabilityProfileModified(state: SessionCapabilityState): boolean {
+  const snapshot = state.profileSnapshot;
+  return (
+    snapshot !== undefined &&
+    (!equalNameSets(state.toolDenylist, snapshot.excludedTools) ||
+      !equalNameSets(state.hiddenSkillNames, snapshot.hiddenSkills))
+  );
 }
 
 /** Return a safe copy of the latest valid snapshot in all session entries. */

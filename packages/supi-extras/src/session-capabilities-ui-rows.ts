@@ -2,7 +2,13 @@ import type { SelectItem } from "@earendil-works/pi-tui";
 import type { SessionCapabilitySkill, SessionCapabilityState } from "@mrclrchtr/supi-core/session";
 
 /** A section shown by the session capability selector. */
-export type CapabilitySection = "tools" | "skills";
+export type CapabilitySection = "tools" | "skills" | "profiles";
+
+/** A profile action returned after the selector closes, before any dialog opens. */
+export interface CapabilityProfileAction {
+  id: string;
+  value: string;
+}
 
 /** A tool row that the session selector can display. */
 export interface CapabilityToolItem {
@@ -182,11 +188,14 @@ function skillRows(
 }
 
 /** Build the rows for one session capability section. */
-export function buildCapabilityRows(
-  section: CapabilitySection,
-  tools: CapabilityToolItem[],
-  skills: SessionCapabilitySkill[] | undefined,
-  state: SessionCapabilityState,
-): CapabilityRow[] {
+export function buildCapabilityRows(options: {
+  section: CapabilitySection;
+  tools: CapabilityToolItem[];
+  skills: SessionCapabilitySkill[] | undefined;
+  state: SessionCapabilityState;
+  profileRows?: CapabilityRow[];
+}): CapabilityRow[] {
+  const { section, tools, skills, state, profileRows = [] } = options;
+  if (section === "profiles") return profileRows;
   return section === "tools" ? toolRows(tools, state) : skillRows(skills, state);
 }

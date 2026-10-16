@@ -9,7 +9,11 @@ import {
   truncateToWidth,
   visibleWidth,
 } from "@earendil-works/pi-tui";
-import type { SessionCapabilitySkill, SessionCapabilityState } from "@mrclrchtr/supi-core/session";
+import {
+  isSessionCapabilityProfileModified,
+  type SessionCapabilitySkill,
+  type SessionCapabilityState,
+} from "@mrclrchtr/supi-core/session";
 import {
   createSelectListMenu,
   formatTuiTitleLine,
@@ -19,13 +23,20 @@ import {
 } from "@mrclrchtr/supi-core/tui";
 import {
   buildCapabilityRows,
+  type CapabilityProfileAction,
   type CapabilityRow,
   type CapabilitySection,
   type CapabilityToolItem,
 } from "./session-capabilities-ui-rows.ts";
 
-export type { CapabilityToolItem } from "./session-capabilities-ui-rows.ts";
+export type {
+  CapabilityProfileAction,
+  CapabilityRow,
+  CapabilitySection,
+  CapabilityToolItem,
+} from "./session-capabilities-ui-rows.ts";
 
+const SECTIONS: CapabilitySection[] = ["tools", "skills", "profiles"];
 const MAX_VISIBLE_ROWS = 10;
 const HEADER_HEIGHT = 2;
 
@@ -37,8 +48,12 @@ interface SelectorComponent {
 }
 
 interface CapabilitySelectorOptions {
-  done: (result: undefined) => void;
+  done: (result: CapabilityProfileAction | undefined) => void;
   onChange: (id: string, value: string) => void;
+  /** Rows read from profile configuration before this selector opens. */
+  profileRows?: CapabilityRow[];
+  /** Reopen Profiles after a profile action. Defaults to Tools. */
+  initialSection?: CapabilitySection;
   skills: SessionCapabilitySkill[] | undefined;
   state: SessionCapabilityState;
   theme: ExtensionUIContext["theme"];
@@ -124,12 +139,7 @@ class CapabilityList implements SelectorComponent {
   }
 
   private buildRows(): CapabilityRow[] {
-    return buildCapabilityRows(
-      this.section,
-      this.options.tools,
-      this.options.skills,
-      this.options.state,
-    );
+    return buildCapabilityRows({ ...this.options, section: this.section });
   }
 
   private filteredRows(): CapabilityRow[] {
@@ -206,7 +216,13 @@ class CapabilityList implements SelectorComponent {
 
   private renderHint(width: number): string {
     return renderTuiHintLine(
-      ["Type to search", "Enter for actions", "Space to toggle", "Tab to switch", "Esc to close"],
+      [
+        "Type to search",
+        "Enter for actions",
+        ...(this.section === "profiles" ? [] : ["Space to toggle"]),
+        "Tab to switch",
+        "Esc to close",
+      ],
       this.options.theme,
       width,
     );
@@ -268,8 +284,7 @@ class CapabilityList implements SelectorComponent {
     const row = this.filteredRows()[this.selectedIndex];
     if (!row?.toggleValues) return;
     const [enabledValue, disabledValue] = row.toggleValues;
-    this.options.onChange(row.id, row.currentValue === enabledValue ? disabledValue : enabledValue);
-    this.refreshRows(row.id);
+    this.changeRow(row.id, row.currentValue === enabledValue ? disabledValue : enabledValue);
   }
 
   private activateSelected(): void {
@@ -281,8 +296,7 @@ class CapabilityList implements SelectorComponent {
       theme: this.options.theme,
       onSelect: (item) => {
         this.menu = null;
-        this.options.onChange(row.id, item.value);
-        this.refreshRows(row.id);
+        this.changeRow(row.id, item.value);
       },
       onCancel: () => {
         this.menu = null;
@@ -292,6 +306,15 @@ class CapabilityList implements SelectorComponent {
     });
     this.invalidate();
     this.options.tui.requestRender();
+  }
+
+  private changeRow(id: string, value: string): void {
+    if (id.startsWith("profile:")) {
+      this.options.done({ id, value });
+      return;
+    }
+    this.options.onChange(id, value);
+    this.refreshRows(id);
   }
 
   private refreshRows(selectedId: string): void {
@@ -308,17 +331,25 @@ class CapabilityList implements SelectorComponent {
 /** Build the searchable selector for the current session. */
 export function createCapabilitySelector(options: CapabilitySelectorOptions): SelectorComponent {
   const { theme, tui } = options;
-  let section: CapabilitySection = "tools";
+  let section: CapabilitySection = options.initialSection ?? "tools";
   let list = new CapabilityList(section, options);
   const topBorder = new DynamicBorder((text: string) => theme.fg("borderMuted", text));
   const bottomBorder = new DynamicBorder((text: string) => theme.fg("borderMuted", text));
 
   const renderTitle = (width: number): string => {
-    const tabs =
-      section === "tools"
-        ? `${theme.fg("accent", theme.bold("[Tools]"))}  ${theme.fg("dim", "Skills")}`
-        : `${theme.fg("dim", "Tools")}  ${theme.fg("accent", theme.bold("[Skills]"))}`;
-    return truncateToWidth(formatTuiTitleLine("Session Capabilities", theme, tabs), width);
+    const tabs = SECTIONS.map((tab) => {
+      const label = tab.charAt(0).toUpperCase() + tab.slice(1);
+      return tab === section
+        ? theme.fg("accent", theme.bold(`[${label}]`))
+        : theme.fg("dim", label);
+    }).join("  ");
+    const snapshot = options.state.profileSnapshot;
+    const profile = snapshot ? ` · ${snapshot.id} (${snapshot.source})` : "";
+    const modified = isSessionCapabilityProfileModified(options.state) ? " · Modified" : "";
+    return truncateToWidth(
+      formatTuiTitleLine(`Session Capabilities${profile}${modified}`, theme, tabs),
+      width,
+    );
   };
 
   return {
@@ -336,8 +367,11 @@ export function createCapabilitySelector(options: CapabilitySelectorOptions): Se
       list.invalidate();
     },
     handleInput(data) {
-      if (matchesKey(data, Key.tab) && !list.hasOpenMenu()) {
-        section = section === "tools" ? "skills" : "tools";
+      const reverse = matchesKey(data, Key.shift("tab"));
+      if ((matchesKey(data, Key.tab) || reverse) && !list.hasOpenMenu()) {
+        const index =
+          (SECTIONS.indexOf(section) + (reverse ? -1 : 1) + SECTIONS.length) % SECTIONS.length;
+        section = SECTIONS[index] ?? "tools";
         list = new CapabilityList(section, options);
         tui.requestRender();
         return;

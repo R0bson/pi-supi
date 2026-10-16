@@ -83,7 +83,6 @@ export function reconcileToolInventory(
 
   state.initiallyInactiveToolNames = Array.from(initiallyInactive);
   state.eligibleToolNames = Array.from(eligible);
-  state.toolDenylist = state.toolDenylist.filter((name) => eligible.has(name));
   state.toolEnabledNames = (state.toolEnabledNames ?? []).filter(
     (name) => eligible.has(name) && !state.toolDenylist.includes(name),
   );

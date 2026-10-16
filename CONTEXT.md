@@ -102,6 +102,14 @@ _Avoid_: debug event, registry event, telemetry, policy checker
 A session-specific restriction that makes selected extension tools inactive or hides selected skills from the model catalog without changing persistent configuration.
 _Avoid_: session settings, temporary settings
 
+**Session Capability Profile**:
+A reusable named set of exclusions for extension tools and model-visible skills; all other eligible capabilities remain available. It is separate from an Agent Profile and does not define model preferences, instructions, or security permissions.
+_Avoid_: Agent Profile, permission profile, profile without qualification
+
+**Capability Profile Snapshot**:
+A session-owned copy of a Session Capability Profile when it was applied. It retains the profile's identity and source and supplies the baseline for changes to session exclusions, independent of later edits to the saved profile.
+_Avoid_: live profile link, current saved profile
+
 **Package Tool Group**:
 The current model-callable tools from one Extension Package, grouped for bulk selection. Selecting the group does not unload the package.
 _Avoid_: package disable, extension unload

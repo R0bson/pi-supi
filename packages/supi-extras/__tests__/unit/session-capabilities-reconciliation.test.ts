@@ -60,6 +60,8 @@ function setupSession(
 
   const ctx = makeCtx({
     mode: "tui",
+    isIdle: () => true,
+    waitForIdle: async () => {},
     sessionManager: {
       getSessionId: () => id,
       getSessionFile: () => undefined,

@@ -6,11 +6,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { FOOTER_INVALIDATE_EVENT, footerContributions } from "@mrclrchtr/supi-core/footer-registry";
 import {
+  applySessionCapabilityProfile,
   clearPendingSessionCapabilityForks,
   createEmptySessionCapabilityState,
   decodeSessionCapabilities,
   findSessionCapabilities,
   getSessionCapabilitySkillProvider,
+  isSessionCapabilityProfileModified,
   readPendingSessionCapabilityFork,
   SESSION_CAPABILITIES_ENTRY,
   type SessionCapabilitySkill,
@@ -18,6 +20,7 @@ import {
   sessionCapabilityState,
   setPendingSessionCapabilityFork,
 } from "@mrclrchtr/supi-core/session";
+import { openCapabilitySelector } from "./session-capabilities-selector.ts";
 import {
   addActiveToolsToBaseline,
   baselineFromState,
@@ -31,7 +34,8 @@ import {
   observeNewTools,
   reconcileToolInventory,
 } from "./session-capabilities-tools.ts";
-import { type CapabilityToolItem, createCapabilitySelector } from "./session-capabilities-ui.ts";
+import type { CapabilityToolItem } from "./session-capabilities-ui.ts";
+import { createCapabilityProfileStore } from "./session-capability-profile-store.ts";
 
 const COMMAND_NAME = "supi-capabilities";
 const FOOTER_KEY = "supi-capabilities";
@@ -60,11 +64,15 @@ function updateFooter(
     state.toolDenylist.length +
     (state.toolEnabledNames?.length ?? 0) +
     state.hiddenSkillNames.length;
-  if (count === 0) {
+  const profile = state.profileSnapshot;
+  if (count === 0 && !profile) {
     footerContributions.unregister(FOOTER_KEY);
     ctx.ui.setStatus(FOOTER_KEY, undefined);
   } else {
-    const render = (): string => ctx.ui.theme.fg("accent", `${FOOTER_ICON}${count}`);
+    const label = profile
+      ? ` ${profile.id}${isSessionCapabilityProfileModified(state) ? " Modified" : ""}`
+      : "";
+    const render = (): string => ctx.ui.theme.fg("accent", `${FOOTER_ICON}${count}${label}`);
     footerContributions.register({ key: FOOTER_KEY, placement: "stats-end", render });
     ctx.ui.setStatus(FOOTER_KEY, render());
   }
@@ -125,21 +133,6 @@ function restoreAllTools(
   applyToolDenylist(pi, state, restoreNames, restorableNames);
 }
 
-function resetTools(
-  pi: ExtensionAPI,
-  ctx: ExtensionContext,
-  state: SessionCapabilityState,
-  restorableNames: ReadonlySet<string>,
-): void {
-  restoreAllTools(pi, state, restorableNames);
-  saveState(pi, ctx, state);
-}
-
-function resetSkills(pi: ExtensionAPI, ctx: ExtensionContext, state: SessionCapabilityState): void {
-  state.hiddenSkillNames = [];
-  saveState(pi, ctx, state);
-}
-
 function resetAll(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
@@ -148,6 +141,7 @@ function resetAll(
 ): void {
   restoreAllTools(pi, state, restorableNames);
   state.hiddenSkillNames = [];
+  delete state.profileSnapshot;
   saveState(pi, ctx, state);
 }
 
@@ -198,14 +192,18 @@ function handleSelectorChange(options: SelectorChangeOptions): void {
       saveState(pi, ctx, state);
       return;
     case "hide-all-skills":
-      state.hiddenSkillNames = Array.from(new Set((skills ?? []).map((skill) => skill.name)));
+      state.hiddenSkillNames = Array.from(
+        new Set([...state.hiddenSkillNames, ...(skills ?? []).map((skill) => skill.name)]),
+      );
       saveState(pi, ctx, state);
       return;
     case "reset-tools":
-      resetTools(pi, ctx, state, options.restorableNames);
+      restoreAllTools(pi, state, options.restorableNames);
+      saveState(pi, ctx, state);
       return;
     case "reset-skills":
-      resetSkills(pi, ctx, state);
+      state.hiddenSkillNames = [];
+      saveState(pi, ctx, state);
       return;
     case "reset-all":
       resetAll(pi, ctx, state, options.restorableNames);
@@ -224,8 +222,51 @@ function handleSelectorChange(options: SelectorChangeOptions): void {
   }
 }
 
-/** Register session-only controls for extension tools and model-visible skills. */
-export default function sessionCapabilities(pi: ExtensionAPI): void {
+/** Check all branches for history. Initial model and thinking entries are not history. */
+function shouldApplyDefault(
+  ctx: ExtensionContext,
+  reason: string,
+  storedState: SessionCapabilityState | undefined,
+): boolean {
+  if (reason === "new") return true;
+  if (reason !== "startup" || storedState || ctx.sessionManager.getHeader()?.parentSession)
+    return false;
+  return !ctx.sessionManager
+    .getEntries()
+    .some((entry) =>
+      ["message", "custom_message", "compaction", "branch_summary", "context_edit"].includes(
+        entry.type,
+      ),
+    );
+}
+
+function applyDefaultProfile(
+  state: SessionCapabilityState,
+  ctx: ExtensionContext,
+  homeDir: string | undefined,
+): SessionCapabilityState {
+  const catalog = createCapabilityProfileStore({
+    cwd: ctx.cwd,
+    homeDir,
+    isProjectTrusted: () => ctx.isProjectTrusted(),
+  }).read();
+  for (const error of catalog.errors) {
+    const message = `Session capability profiles (${error.scope}, ${error.path}): ${error.message}`;
+    if (ctx.mode === "print" || ctx.mode === "json") {
+      // biome-ignore lint/suspicious/noConsole: non-interactive startup has no notification UI
+      console.warn(message);
+    } else ctx.ui.notify(message, "warning");
+  }
+  return catalog.default.status === "resolved"
+    ? (applySessionCapabilityProfile(state, catalog.default.profile) ?? state)
+    : state;
+}
+
+/** Register session controls and saved profiles for extension tools and model-visible skills. */
+export default function sessionCapabilities(
+  pi: ExtensionAPI,
+  options: { homeDir?: string } = {},
+): void {
   let toolBaseline: ToolBaseline | undefined;
   let knownToolNames = new Set<string>();
   let restorableToolNames = new Set<string>();
@@ -237,6 +278,8 @@ export default function sessionCapabilities(pi: ExtensionAPI): void {
         return;
       }
 
+      if (!ctx.isIdle()) ctx.ui.notify("Waiting for the agent to become idle.", "info");
+      await ctx.waitForIdle();
       const sessionId = ctx.sessionManager.getSessionId();
       const state =
         currentSessionState(ctx) ??
@@ -250,36 +293,37 @@ export default function sessionCapabilities(pi: ExtensionAPI): void {
       if (provider) {
         try {
           skills = await provider.listEligibleSkills(ctx);
-          const names = new Set(skills.map((skill) => skill.name));
-          const previous = state.hiddenSkillNames;
-          state.hiddenSkillNames = previous.filter((name) => names.has(name));
-          if (previous.length !== state.hiddenSkillNames.length) saveState(pi, ctx, state);
         } catch {
           ctx.ui.notify("Could not load the skill list", "warning");
         }
       }
 
-      await ctx.ui.custom((tui, theme, _keybindings, done) =>
-        createCapabilitySelector({
-          state,
-          tools: toolInventory.tools,
-          skills,
-          theme,
-          tui,
-          done,
-          onChange: (id, value) =>
-            handleSelectorChange({
-              pi,
-              ctx,
-              state,
-              tools: toolInventory.tools,
-              skills,
-              id,
-              value,
-              restorableNames: restorableToolNames,
-            }),
-        }),
-      );
+      await openCapabilitySelector({
+        ctx,
+        homeDir: options.homeDir,
+        state,
+        tools: toolInventory.tools,
+        skills,
+        onChange: (id, value) =>
+          handleSelectorChange({
+            pi,
+            ctx,
+            state,
+            tools: toolInventory.tools,
+            skills,
+            id,
+            value,
+            restorableNames: restorableToolNames,
+          }),
+        onApply: (profile) => {
+          const next = applySessionCapabilityProfile(state, profile);
+          if (!next) throw new Error("Invalid session capability profile.");
+          const restoreNames = [...state.toolDenylist];
+          Object.assign(state, next);
+          applyToolDenylist(pi, state, restoreNames, restorableToolNames);
+          saveState(pi, ctx, state);
+        },
+      });
     },
   });
 
@@ -309,6 +353,9 @@ export default function sessionCapabilities(pi: ExtensionAPI): void {
       event.reason !== "new" && state ? baselineFromState(state) : captureToolBaseline(pi);
     addActiveToolsToBaseline(pi, toolBaseline);
     state ??= initialSessionCapabilityState(toolBaseline);
+    if (shouldApplyDefault(ctx, event.reason, currentEntryState)) {
+      state = applyDefaultProfile(state, ctx, options.homeDir);
+    }
     const toolStateChanged = reconcileToolInventory(pi, state).changed;
     sessionCapabilityState.set(ctx.sessionManager.getSessionId(), state);
     applyToolDenylist(pi, state, state.toolEnabledNames ?? [], restorableToolNames);
@@ -323,6 +370,7 @@ export default function sessionCapabilities(pi: ExtensionAPI): void {
     const state = currentSessionState(ctx);
     if (!state) return;
     observeNewTools(pi, state, knownToolNames, restorableToolNames);
+    if (reconcileToolInventory(pi, state).changed) saveState(pi, ctx, state);
     applyToolDenylist(pi, state, state.toolEnabledNames ?? [], restorableToolNames);
   });
 
@@ -330,6 +378,7 @@ export default function sessionCapabilities(pi: ExtensionAPI): void {
     const state = currentSessionState(ctx);
     if (!state) return;
     observeNewTools(pi, state, knownToolNames, restorableToolNames);
+    if (reconcileToolInventory(pi, state).changed) saveState(pi, ctx, state);
     applyToolDenylist(pi, state, state.toolEnabledNames ?? [], restorableToolNames);
   });
 
