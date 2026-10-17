@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import * as path from "node:path";
 import {
   type CodeQueryResult,
@@ -6,6 +7,7 @@ import {
   partialCodeQuery,
   unavailableCodeQuery,
 } from "@mrclrchtr/supi-code-runtime/api";
+import { isWithinOrEqual } from "@mrclrchtr/supi-core/project";
 import type { LspClient } from "../client/client.ts";
 import type {
   DocumentSymbol,
@@ -34,6 +36,8 @@ export interface WorkspaceSymbolWarmOptions {
   maxMarkerDepth?: number;
   /** Runtime-owned automatic path policy. */
   policy?: AutomaticLspPathPolicy;
+  /** Absolute request scopes. Search only their intersection with the route root. */
+  scopes?: readonly string[];
 }
 
 export function getWorkspaceSymbolWarmPosition(
@@ -143,6 +147,31 @@ export function findWorkspaceSymbolWarmTargets(
   const maxMarkerDepth = options.maxMarkerDepth ?? DEFAULT_MARKER_SCAN_DEPTH;
   const policy = options.policy ?? createDefaultAutomaticLspPathPolicy(resolvedRoot);
   if (allowed.size === 0) return [];
+
+  if (options.scopes?.length) {
+    const targets = options.scopes.flatMap((scope) => {
+      const searchRoot = isWithinOrEqual(resolvedRoot, scope)
+        ? scope
+        : isWithinOrEqual(scope, resolvedRoot)
+          ? resolvedRoot
+          : null;
+      return searchRoot
+        ? findWorkspaceSymbolWarmTargets(searchRoot, rootMarkers, fileTypes, {
+            ...options,
+            policy,
+            scopes: undefined,
+          })
+        : [];
+    });
+    return [...new Map(targets.map((target) => [target.file, target])).values()];
+  }
+
+  if (statSync(resolvedRoot, { throwIfNoEntry: false })?.isFile()) {
+    return allowed.has(path.extname(resolvedRoot).slice(1).toLowerCase()) &&
+      policy.isEligible(resolvedRoot, "file")
+      ? [{ projectRoot: path.dirname(resolvedRoot), file: resolvedRoot }]
+      : [];
+  }
 
   const markerRoots = collectMarkerRoots(resolvedRoot, rootMarkers, maxMarkerDepth, policy);
   const targets = markerRoots

@@ -334,8 +334,8 @@ export class LspManager {
   private invalidationEpoch = 0;
   /** Invalidation generation in which each route last received a recovery restart. */
   private recoveryRestartEpochs = new Map<string, number>();
-  /** Project roots already warmed for workspace-symbol queries. */
-  private warmedWorkspaceSymbolProjects = new Set<string>();
+  /** Files already probed for workspace-symbol warm-up. */
+  private warmedWorkspaceSymbolFiles = new Set<string>();
   /** Project roots whose semantic state was warmed with a readiness probe. */
   private warmedSemanticProjects = new Set<string>();
   /** In-flight warm-up probes keyed by project key so concurrent callers share one probe. */
@@ -527,7 +527,7 @@ export class LspManager {
         root,
         failureMessage: "The LSP client is not running.",
       });
-      this.clearWarmedWorkspaceSymbolProjects(existing.name, existing.root);
+      this.clearWarmedWorkspaceSymbolFiles(existing.name, existing.root);
       this.clearWarmedSemanticProjects(existing.name, existing.root);
       this.clearPendingWarmProbes(existing.name, existing.root);
       if (!retryFailedStart) return null;
@@ -1246,7 +1246,7 @@ export class LspManager {
   ): LspClient {
     const key = route.key;
     if (this.clients.get(key) === recovery.failedClient) this.clients.delete(key);
-    this.clearWarmedWorkspaceSymbolProjects(route.serverName, route.root);
+    this.clearWarmedWorkspaceSymbolFiles(route.serverName, route.root);
     this.clearWarmedSemanticProjects(route.serverName, route.root);
     this.clearPendingWarmProbes(route.serverName, route.root);
 
@@ -1402,7 +1402,7 @@ export class LspManager {
 
     // Spawn new client
     const client = this.createClient(serverName, serverConfig, root, key);
-    this.clearWarmedWorkspaceSymbolProjects(serverName, root);
+    this.clearWarmedWorkspaceSymbolFiles(serverName, root);
     this.clearWarmedSemanticProjects(serverName, root);
     this.clearPendingWarmProbes(serverName, root);
     this.clients.set(key, client);
@@ -1532,7 +1532,7 @@ export class LspManager {
     if (this.clients.get(key) !== client) return { files, restarted: false };
     this.clients.delete(key);
     this.unavailable.delete(key);
-    this.clearWarmedWorkspaceSymbolProjects(client.name, client.root);
+    this.clearWarmedWorkspaceSymbolFiles(client.name, client.root);
     this.clearWarmedSemanticProjects(client.name, client.root);
     this.clearPendingWarmProbes(client.name, client.root);
 
@@ -2307,7 +2307,7 @@ export class LspManager {
     this.recoveryRestartEpochs.clear();
     this.unavailable.clear();
     this.knownRoots.clear();
-    this.warmedWorkspaceSymbolProjects.clear();
+    this.warmedWorkspaceSymbolFiles.clear();
     this.warmedSemanticProjects.clear();
     this.pendingWarmProbes.clear();
     this.pendingRestarts.clear();
@@ -2671,6 +2671,7 @@ export class LspManager {
       findWarmTargets: (root, rootMarkers, fileTypes) =>
         findWorkspaceSymbolWarmTargets(root, rootMarkers, fileTypes, {
           policy: this.automaticPathPolicy,
+          scopes: resolvedScopes,
         }),
       getWarmPosition: getWorkspaceSymbolWarmPosition,
       collect,
@@ -2803,6 +2804,7 @@ export class LspManager {
   }): Promise<{ warmedAny: boolean; collection: WorkspaceSymbolCollection | null }> {
     const { findWarmTargets, getWarmPosition, collect, routeMatches, query, control } = options;
     let warmedAny = false;
+    let latestCollection: WorkspaceSymbolCollection | null = null;
 
     for (const client of Array.from(this.clients.values())) {
       if (routeMatches && !routeMatches(client)) continue;
@@ -2819,8 +2821,9 @@ export class LspManager {
       ).slice(0, 24);
 
       for (const target of warmTargets) {
-        const projectKey = this.workspaceSymbolProjectKey(client.name, target.projectRoot);
-        if (this.warmedWorkspaceSymbolProjects.has(projectKey)) continue;
+        // A file probe does not load every program under the route root.
+        const fileKey = `${client.name}:${path.resolve(target.file)}`;
+        if (this.warmedWorkspaceSymbolFiles.has(fileKey)) continue;
 
         const openedClient = await this.ensureFileOpen(target.file);
         if (!openedClient) continue;
@@ -2834,18 +2837,19 @@ export class LspManager {
           control,
         );
         if (available) {
-          this.warmedWorkspaceSymbolProjects.add(projectKey);
+          this.warmedWorkspaceSymbolFiles.add(fileKey);
           warmedAny = true;
         }
 
-        const collected = await collect(this.clients.values(), query);
-        if (collected.hasSupport && collected.results.length > 0) {
-          return { warmedAny, collection: collected };
+        latestCollection = await collect(this.clients.values(), query);
+        if (latestCollection.hasSupport && latestCollection.results.length > 0) {
+          return { warmedAny, collection: latestCollection };
         }
       }
     }
 
-    return { warmedAny, collection: null };
+    // A completed-empty retry replaces an earlier failure too.
+    return { warmedAny, collection: latestCollection };
   }
 
   private async warmSemanticProject(
@@ -2936,11 +2940,11 @@ export class LspManager {
     return `${serverName}:${path.resolve(projectRoot)}`;
   }
 
-  private clearWarmedWorkspaceSymbolProjects(serverName: string, root: string): void {
+  private clearWarmedWorkspaceSymbolFiles(serverName: string, root: string): void {
     const prefix = `${serverName}:${path.resolve(root)}`;
-    for (const key of Array.from(this.warmedWorkspaceSymbolProjects)) {
+    for (const key of Array.from(this.warmedWorkspaceSymbolFiles)) {
       if (key === prefix || key.startsWith(`${prefix}${path.sep}`)) {
-        this.warmedWorkspaceSymbolProjects.delete(key);
+        this.warmedWorkspaceSymbolFiles.delete(key);
       }
     }
   }

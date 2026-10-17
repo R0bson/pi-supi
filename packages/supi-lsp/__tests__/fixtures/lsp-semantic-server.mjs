@@ -4,6 +4,8 @@ let input = Buffer.alloc(0);
 const logPath = process.argv[2];
 const responseDelayMs = Number(process.argv[3] ?? 25);
 const supportsDiagnostics = process.argv[4] === "pull";
+const failWorkspaceSymbols = process.argv.includes("--workspace-symbol-error");
+const symbolsFromOpenFiles = process.argv.includes("--workspace-symbol-open-files");
 const readinessDelayArg = process.argv.find((arg) => arg.startsWith("--readiness-delay="));
 const readinessDelayMs = readinessDelayArg
   ? Number(readinessDelayArg.slice("--readiness-delay=".length))
@@ -135,7 +137,34 @@ function handle(message) {
     return;
   }
   if (message.method === "workspace/symbol") {
-    respond(message.id, []);
+    if (failWorkspaceSymbols) {
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: {
+          code: -32603,
+          message: documents.size > 0 ? "Workspace-symbol retry failed." : "No Project.",
+        },
+      });
+    } else {
+      const name = message.params.query;
+      const symbols = symbolsFromOpenFiles
+        ? [...documents.keys()]
+            .filter((uri) => uri.endsWith(`/${name}.tsx`))
+            .map((uri) => ({
+              name,
+              kind: 12,
+              location: {
+                uri,
+                range: {
+                  start: { line: 0, character: 16 },
+                  end: { line: 0, character: 16 + name.length },
+                },
+              },
+            }))
+        : [];
+      respond(message.id, symbols);
+    }
     return;
   }
   if (message.method === "textDocument/rename") {
