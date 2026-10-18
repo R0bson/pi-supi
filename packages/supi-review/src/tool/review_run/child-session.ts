@@ -88,11 +88,15 @@ function mapOutcome<T>(outcome: AgentRunOutcome<T>): ChildRunOutcome<T> {
   }
   if (
     outcome.failureCode === "prompt-rejected" ||
-    outcome.failureCode === "unexpected-runner-failure"
+    outcome.failureCode === "unexpected-runner-failure" ||
+    outcome.failureCode === "provider-error"
   ) {
     return {
       kind: "failed",
-      failureCode: outcome.failureCode,
+      failureCode:
+        outcome.failureCode === "provider-error"
+          ? "unexpected-runner-failure"
+          : outcome.failureCode,
       diagnostics: outcome.diagnostics,
       ...(outcome.usage ? { usage: outcome.usage } : {}),
     };

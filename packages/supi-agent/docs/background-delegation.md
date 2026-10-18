@@ -84,7 +84,8 @@ agent_cancel({ batchId })
 - Deliver notices through Pi custom messages with steering delivery. A busy parent receives them at the next safe turn boundary; an idle parent can start a new turn.
 - Do not interrupt an executing parent tool.
 - Deliver each completion notice at most once within the active ownership scope. Repeated result reads must not generate notices.
-- Failures and timeouts are terminal results and can notify the parent.
+- Before the next model request, omit queued or retained notices when all named tasks have successful stored collections on the active raw branch. Failed or unstored collections do not suppress notices. This context filter does not rewrite the human transcript.
+- Failures and timeouts are terminal results and can notify the parent. Provider-reported errors use `provider-error` and a bounded canonical reason when available. Quota or credit failures remain distinct from rate limits. Missing Usage alone is not a failure signal.
 - User-requested cancellation must not itself start another parent turn.
 - Prevent completion-before-start-return races from producing an orphan notice. Establish the batch identity and launch ownership before delivery.
 

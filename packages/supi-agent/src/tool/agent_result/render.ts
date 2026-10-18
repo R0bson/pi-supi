@@ -48,6 +48,7 @@ function renderTaskLines(task: BatchTaskResult, theme: Theme): string[] {
       ),
     );
   if (task.failureCode) lines.push(theme.fg("warning", task.failureCode));
+  if (task.failureSummary) lines.push(theme.fg("warning", task.failureSummary));
   if (task.finalTextFull) lines.push(task.finalTextFull);
   if (task.humanTruncated || task.modelTruncated) lines.push(theme.fg("dim", "Output truncated."));
   return lines;

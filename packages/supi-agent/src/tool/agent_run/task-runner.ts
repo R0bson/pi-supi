@@ -5,7 +5,10 @@ import type {
   AgentRunSessionView,
   RegisteredAgentRunHandle,
 } from "@mrclrchtr/supi-agent-runtime/api";
-import { startRegisteredAgentRun } from "@mrclrchtr/supi-agent-runtime/api";
+import {
+  getAgentRunDiagnosticErrorRows,
+  startRegisteredAgentRun,
+} from "@mrclrchtr/supi-agent-runtime/api";
 import { toAgentToolNames } from "../../capabilities.ts";
 import type { AgentProfile } from "../../types.ts";
 import type { ResolvedTask } from "./batch-preflight.ts";
@@ -287,6 +290,12 @@ function finalizeTaskOutcome(
     modelTruncated,
     usage,
     failureCode,
+    failureSummary:
+      outcome.kind === "failed" && outcome.failureCode !== "session-creation-failed"
+        ? getAgentRunDiagnosticErrorRows(outcome.diagnostics)
+            .map((row) => row.text)
+            .join("; ") || undefined
+        : undefined,
     turns: progress?.turns ?? 0,
     toolUses: progress?.toolUses ?? 0,
     modelId: context.modelId,

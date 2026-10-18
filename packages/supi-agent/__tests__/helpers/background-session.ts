@@ -97,6 +97,10 @@ export function controlledSession(tools: string[], defaultUsage: Usage) {
       bill();
       rejectPrompt?.(new Error("Controlled SDK failure"));
     },
+    failProvider(errorMessage: string) {
+      session.messages.push({ role: "assistant", content: [], stopReason: "error", errorMessage });
+      releasePrompt?.();
+    },
     holdDisposal() {
       let release: () => void = () => undefined;
       disposal = new Promise<void>((resolve) => {

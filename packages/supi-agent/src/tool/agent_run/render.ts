@@ -359,5 +359,7 @@ function renderExpandedTask(
   if (task.failureCode) {
     container.addChild(new Text(theme.fg("dim", `failure: ${task.failureCode}`), 1, 0));
   }
+  if (task.failureSummary)
+    container.addChild(new Text(theme.fg("warning", task.failureSummary), 1, 0));
   if (view) renderConversationView(container, view, theme);
 }

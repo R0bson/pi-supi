@@ -96,6 +96,10 @@ describe("runIsolatedChild", () => {
         { kind: "failed", failureCode: "unexpected-runner-failure", diagnostics },
       ],
       [
+        { kind: "failed", failureCode: "provider-error", diagnostics },
+        { kind: "failed", failureCode: "unexpected-runner-failure", diagnostics },
+      ],
+      [
         { kind: "canceled", diagnostics },
         { kind: "canceled", diagnostics },
       ],

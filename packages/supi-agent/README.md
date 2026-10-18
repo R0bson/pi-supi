@@ -28,7 +28,7 @@ In TUI and RPC, `agent_run` defaults to background execution for read-only profi
 - `agent_result({ batchId })` returns completed task results and pending status. Results are repeatable. Do not poll.
 - `agent_result({ batchId, wait: true })` waits for all tasks to finish.
 - `agent_cancel({ batchId })` requests a stop for the active tasks in one background batch. Collect its terminal results afterward.
-- Each task can produce a completion notice before its siblings finish. The notice reaches a busy parent at the next safe turn boundary, or starts a turn when the parent is idle. It contains identifiers and status, not task output.
+- Each task can produce a completion notice before its siblings finish. The notice reaches a busy parent at the next safe turn boundary, or starts a turn when the parent is idle. It contains identifiers and status, not task output. Notices for successfully collected tasks are omitted from later model requests; the human transcript is unchanged.
 - The default limit is four active Agent Runs per session, counting foreground and background together. Set `agent.maxConcurrentRuns` in SuPi configuration or use **Active Agent Run limit** in `/supi-settings`. The value must be a positive integer. A batch that does not fit is rejected as a whole; there is no queue. Lowering the limit does not stop existing runs. Review limits are separate.
 - Parent abort stops active background batches and pauses automatic delivery until a later user-originated prompt. Normal parent completion leaves them running. Idle Escape keeps Pi's normal editor behavior; use `/agents` to stop selected runs.
 - Leaving the conversation branch that contains a batch's launch cancels active tasks. Compaction alone does not cancel them. Reload, session replacement, and shutdown stop owned runs and expire handles. No restart recovery is provided.
@@ -36,6 +36,8 @@ In TUI and RPC, `agent_run` defaults to background execution for read-only profi
 - Read-only runs share the parent's working directory. They do not read a frozen snapshot.
 
 See the [background delegation design](docs/background-delegation.md) for the full contract.
+
+Provider-reported failures use `provider-error`. Results and debug events retain a bounded reason, such as `provider status 402 quota error`, when available. They do not retain raw error responses or credentials. Missing Usage is not a failure signal, and SuPi does not invent token or cost estimates.
 
 ## Enable or disable profiles
 

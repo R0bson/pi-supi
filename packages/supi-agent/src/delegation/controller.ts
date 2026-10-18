@@ -165,12 +165,22 @@ export class DelegationController {
     this.#scheduleNotice();
   }
 
-  /** Filter queued or restored completion messages that no longer belong to this branch. */
-  noticeVisible(batchId: unknown, ctx: ExtensionContext): boolean {
-    if (this.#closed || typeof batchId !== "string") return false;
+  /** Omit stale notices at delivery, using successful collections on the raw active branch. */
+  noticeVisible(details: unknown, ctx: ExtensionContext): boolean {
+    if (this.#closed || !details || typeof details !== "object") return false;
+    const { batchId, taskIds } = details as { batchId?: unknown; taskIds?: unknown };
+    if (typeof batchId !== "string" || !Array.isArray(taskIds)) return false;
     this.#manager = ctx.sessionManager;
     const batch = this.#batches.get(batchId);
-    return !!batch && this.#onBranch(batch);
+    if (!batch || !this.#onBranch(batch)) return false;
+    const collected = new Set<string>();
+    for (const entry of ctx.sessionManager.getBranch()) {
+      const result = successfulCollection(entry);
+      if (result?.batchId === batchId) for (const taskId of result.taskIds) collected.add(taskId);
+    }
+    return batch.handle
+      .snapshot()
+      .results.some((task) => taskIds.includes(task.taskId) && !collected.has(task.taskId));
   }
 
   /** Bind only the current parent operation; normal completion does not stop children. */
@@ -244,20 +254,10 @@ export class DelegationController {
 
   #markCollected(entries: readonly SessionEntry[]): void {
     for (const entry of entries) {
-      if (
-        entry.type !== "message" ||
-        entry.message.role !== "toolResult" ||
-        entry.message.toolName !== AGENT_RESULT_TOOL_NAME ||
-        entry.message.isError
-      )
-        continue;
-      const details = entry.message.details as
-        | { batchId?: string; tasks?: BatchTaskResult[] }
-        | undefined;
-      const batch = details?.batchId ? this.#batches.get(details.batchId) : undefined;
-      if (batch && Array.isArray(details?.tasks)) {
-        for (const task of details.tasks) batch.notified.add(task.taskId);
-      }
+      const result = successfulCollection(entry);
+      if (!result) continue;
+      const batch = this.#batches.get(result.batchId);
+      if (batch) for (const taskId of result.taskIds) batch.notified.add(taskId);
     }
   }
 
@@ -315,4 +315,27 @@ export class DelegationController {
       });
     }
   }
+}
+
+/** Read delivered result identities, independently of whether their Usage was reported. */
+function successfulCollection(
+  entry: SessionEntry,
+): { batchId: string; taskIds: string[] } | undefined {
+  if (
+    entry.type !== "message" ||
+    entry.message.role !== "toolResult" ||
+    entry.message.toolName !== AGENT_RESULT_TOOL_NAME ||
+    entry.message.isError
+  )
+    return undefined;
+  const details = entry.message.details as
+    | { batchId?: unknown; tasks?: ({ taskId?: unknown } | null)[] }
+    | undefined;
+  if (typeof details?.batchId !== "string" || !Array.isArray(details.tasks)) return undefined;
+  return {
+    batchId: details.batchId,
+    taskIds: details.tasks.flatMap((task) =>
+      typeof task?.taskId === "string" ? [task.taskId] : [],
+    ),
+  };
 }

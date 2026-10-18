@@ -32,6 +32,6 @@ export function buildCompletionNotice(batchId: string, tasks: readonly BatchTask
     customType: AGENT_COMPLETION_MESSAGE_TYPE,
     content: `Background batch ${batchId}: ${tasks.map((task) => `${JSON.stringify(task.taskId)} ${task.status}`).join(", ")}. Collect available results and Usage with agent_result.`,
     display: true,
-    details: { batchId },
+    details: { batchId, taskIds: tasks.map((task) => task.taskId) },
   };
 }

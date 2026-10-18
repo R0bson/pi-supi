@@ -54,12 +54,9 @@ export default function agentExtension(pi: ExtensionAPI): void {
       (message) =>
         message.role !== "custom" ||
         message.customType !== AGENT_COMPLETION_MESSAGE_TYPE ||
-        controller?.noticeVisible(
-          (message.details as { batchId?: unknown } | undefined)?.batchId,
-          ctx,
-        ),
+        controller?.noticeVisible(message.details, ctx),
     );
-    // Preserve Pi's unchanged-context path when every notice still belongs to this branch.
+    // Preserve Pi's unchanged-context path when every notice remains useful on this branch.
     return messages.length === event.messages.length ? undefined : { messages };
   });
   pi.on("agent_start", (_event, ctx) => controller?.observeParent(ctx.signal));

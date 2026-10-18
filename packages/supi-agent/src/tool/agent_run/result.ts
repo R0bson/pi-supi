@@ -31,7 +31,7 @@ export function formatModelResult(
     const reason = task.failureCode ? ` (${task.failureCode})` : "";
     return {
       overhead: `${header}${reason}\nTurns: ${task.turns} · Tool uses: ${task.toolUses}`,
-      body: "",
+      body: task.failureSummary ?? "",
     };
   });
   if (introduction) sections.unshift({ overhead: introduction, body: "" });

@@ -15,6 +15,27 @@ afterEach(async () => {
 });
 
 describe("terminal background outcomes", () => {
+  it("returns a safe provider quota reason when no Usage is supplied", async () => {
+    harness = await backgroundHarness(sdk);
+    const start = await harness.invoke("agent_run", { tasks: [task()] });
+    await vi.waitFor(() => expect(harness?.children[0]?.session.isStreaming).toBe(true));
+    harness.child("one").failProvider("HTTP 402 Insufficient credits; private repository evidence");
+    const result = await harness.invoke("agent_result", {
+      batchId: start.details.batchId,
+      wait: true,
+    });
+    expect(result.details).toMatchObject({
+      tasks: [
+        expect.objectContaining({
+          failureCode: "provider-error",
+          failureSummary: "provider status 402 quota error",
+        }),
+      ],
+    });
+    expect(JSON.stringify(result.content)).toContain("provider status 402 quota error");
+    expect(JSON.stringify(result.content)).not.toContain("private repository evidence");
+    expect(result.usage).toBeUndefined();
+  });
   it("retains Usage after a runtime prompt failure", async () => {
     harness = await backgroundHarness(sdk);
     const start = await harness.invoke("agent_run", { tasks: [task()] });

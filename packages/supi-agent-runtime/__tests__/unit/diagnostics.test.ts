@@ -40,6 +40,60 @@ async function failureDiagnostics(
 }
 
 describe("Agent Run diagnostics", () => {
+  it("identifies a provider credit failure without retaining raw errors or requiring Usage", async () => {
+    const harness = createHarness(mocks);
+    harness.session.messages = [
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "Insufficient credits. private repository evidence api_key: fixture-secret",
+      },
+    ];
+    const outcome = await startAgentRun({
+      inputs: inputs(),
+      prompt: "Provider failure",
+      completionResolver: () => "not a success",
+    }).result;
+    expect(outcome).toMatchObject({
+      kind: "failed",
+      failureCode: "provider-error",
+      diagnostics: { lastAssistantErrorText: "provider quota error [REDACTED]" },
+    });
+    expect(JSON.stringify(outcome)).not.toContain("fixture-secret");
+    expect(JSON.stringify(outcome)).not.toContain("private repository evidence");
+    expect(harness.runtime.dispose).toHaveBeenCalledOnce();
+  });
+  it.each([
+    ["HTTP 402: insufficient credits", "provider status 402 quota error"],
+    [
+      '{"error":{"code":402,"message":"Payment required","request":"private-source"}}',
+      "provider status 402 quota error",
+    ],
+    ["429 Too many requests", "provider status 429 rate-limit error"],
+    ["HTTP status 503: overloaded", "provider status 503 provider-unavailable error"],
+    ["Insufficient balance", "provider quota error"],
+  ])("retains a safe reason for %s", async (errorMessage, expected) => {
+    const diagnostics = await failureDiagnostics((harness) => {
+      harness.session.messages = [
+        { role: "assistant", content: [], stopReason: "error", errorMessage },
+      ];
+    });
+    expect(diagnostics.lastAssistantErrorText).toBe(expected);
+    expect(formatAgentRunDiagnostics(diagnostics).join("\n")).toContain(expected);
+    expect(JSON.stringify(diagnostics)).not.toContain("private-source");
+  });
+
+  it("does not infer a provider failure from absent Usage", async () => {
+    createHarness(mocks);
+    const outcome = await startAgentRun({
+      inputs: inputs(),
+      prompt: "No Usage",
+      completionResolver: () => "Done",
+    }).result;
+    expect(outcome).toMatchObject({ kind: "success", value: "Done" });
+  });
+
   it("retains bounded safe metadata without assistant content or private tools", async () => {
     const diagnostics = await failureDiagnostics((harness) => {
       harness.session.messages = [

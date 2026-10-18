@@ -230,7 +230,7 @@ describe("Agent Run finite continuation", () => {
 
     await expect(run.result).resolves.toMatchObject({
       kind: "failed",
-      failureCode: "unexpected-runner-failure",
+      failureCode: "provider-error",
     });
     expect(resolveNext).toHaveBeenCalledWith(
       expect.objectContaining({ initialFailureCode: "unexpected-runner-failure" }),

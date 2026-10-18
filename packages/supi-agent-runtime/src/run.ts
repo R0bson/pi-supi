@@ -352,12 +352,18 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
     if (failureCode === "session-creation-failed" && !session) {
       return finish({ kind: "failed", failureCode });
     }
+    const artifact = diagnostics();
     const diagnosticCode =
       failureCode === "session-creation-failed" ? "session-not-ready" : failureCode;
+    // Classify the terminal provider response without changing continuation or retry policy.
+    const terminalCode =
+      diagnosticCode === "unexpected-runner-failure" && artifact.lastAssistantStopReason === "error"
+        ? "provider-error"
+        : diagnosticCode;
     return finish({
       kind: "failed",
-      failureCode: diagnosticCode,
-      diagnostics: diagnostics(),
+      failureCode: terminalCode,
+      diagnostics: artifact,
       ...usageFields(refreshUsage()),
     });
   };

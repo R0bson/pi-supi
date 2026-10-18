@@ -41,6 +41,8 @@ export interface BatchTaskResult {
   usage?: Usage;
   /** Failure stage for a non-success outcome. */
   failureCode?: string;
+  /** Canonical provider-error summary; never raw errors or provider response content. */
+  failureSummary?: string;
   turns: number;
   toolUses: number;
   modelId?: string;

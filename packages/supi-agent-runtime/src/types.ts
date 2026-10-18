@@ -11,12 +11,16 @@ import type { AgentRunProviderAuthority } from "./provider-authority.ts";
 import type { AgentRunRegistry } from "./session/agent-run-registry.ts";
 import type { AgentRunRegistration } from "./session/agent-run-registry-types.ts";
 
-/** The host-owned failure stages of one Agent Run; `prompt-rejected` means no initial prompt started. */
+/**
+ * Agent Run failure stages; `prompt-rejected` means no initial prompt started.
+ * `provider-error` requires a provider-reported assistant error, not missing Usage.
+ */
 export type AgentRunFailureCode =
   | "session-creation-failed"
   | "session-not-ready"
   | "prompt-rejected"
   | "missing-completion"
+  | "provider-error"
   | "unexpected-runner-failure";
 
 /** Terminal outcome of one managed Agent Run. */
