@@ -90,7 +90,10 @@ describe("registered agent_run rendering boundary", () => {
     const updates: unknown[] = [];
     await tool.execute(
       "call-1",
-      { tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }] },
+      {
+        mode: "foreground",
+        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }],
+      },
       undefined,
       (update: unknown) => updates.push(update),
       context(),
@@ -143,7 +146,10 @@ describe("registered agent_run rendering boundary", () => {
     });
     const result = await tool.execute(
       "call-1",
-      { tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }] },
+      {
+        mode: "foreground",
+        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }],
+      },
       undefined,
       undefined,
       context(),
@@ -232,6 +238,7 @@ describe("registered agent_run rendering boundary", () => {
     const result = (await tool.execute(
       "call-1",
       {
+        mode: "foreground",
         sharedContext: "shared context",
         tasks: [{ id: "task-1", profile: "explore", instructions: "inspect the repository" }],
       },

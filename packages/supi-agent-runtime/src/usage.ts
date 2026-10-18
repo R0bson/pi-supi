@@ -37,8 +37,8 @@ export function combineAgentRunUsage(usages: readonly (Usage | undefined)[]): Us
 
 /**
  * Collect every usage-bearing entry owned by the in-memory Agent Run session.
- * This includes assistant turns, tool-result work, compaction, branch summaries, and
- * finalized/live messages that have not reached session persistence yet.
+ * This includes assistant turns, tool-result work, non-message usage entries, compaction,
+ * branch summaries, and finalized/live messages that have not reached persistence yet.
  */
 export function collectAgentRunUsage(session: AgentSession): Usage | undefined {
   const knownMessages = new Set<object>();
@@ -57,7 +57,11 @@ function collectEntryUsage(session: AgentSession, knownMessages: Set<object>): U
       if (entry.type === "message") {
         if (isObject(entry.message)) knownMessages.add(entry.message);
         pushUsage(usages, entry.message);
-      } else if (entry.type === "compaction" || entry.type === "branch_summary") {
+      } else if (
+        entry.type === "usage" ||
+        entry.type === "compaction" ||
+        entry.type === "branch_summary"
+      ) {
         pushUsage(usages, entry);
       }
     }

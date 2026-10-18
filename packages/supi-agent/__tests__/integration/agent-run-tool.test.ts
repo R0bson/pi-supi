@@ -95,7 +95,10 @@ describe("registered agent_run boundary", () => {
     const tool = await registeredTool();
     const result = (await tool.execute(
       "call-1",
-      { tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }] },
+      {
+        mode: "foreground",
+        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }],
+      },
       undefined,
       undefined,
       context(),

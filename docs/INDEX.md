@@ -46,6 +46,10 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 - [Issue 407 follow-ups](ops/issue-407-follow-ups.md) — approved follow-up specification and verification record.
 - [Issue 407: TypeScript diagnostics and request-based confirmation](ops/issue-407-push-diagnostics.md) — historical measurements and current implementation status for request-confirmed diagnostics.
 
+## Package design references
+
+- [Background delegation](../packages/supi-agent/docs/background-delegation.md) — approved execution, completion, cancellation, capacity, and Usage accounting for background Agent Runs.
+
 ## Maintenance rules
 
 - Keep docs as reference material: rules, tables, checklists, code examples. Remove narrative prose.

@@ -52,6 +52,12 @@ export function buildAgentRunSchema(catalogue: ProfileCatalogue): TSchema {
         maxItems: MAX_TASKS,
         description: "One to four independent Delegation Tasks.",
       }),
+      mode: Type.Optional(
+        StringEnum(["background", "foreground"], {
+          description:
+            "Default: background for read-only tasks in TUI/RPC; foreground otherwise. Background rejects mutation-capable profiles and print/JSON modes.",
+        }),
+      ),
       sharedContext: Type.Optional(
         Type.String({
           maxLength: MAX_SHARED_CONTEXT_CHARS,
@@ -66,4 +72,5 @@ export function buildAgentRunSchema(catalogue: ProfileCatalogue): TSchema {
 export type AgentRunToolParams = {
   tasks: Array<{ id: string; profile: string; instructions: string }>;
   sharedContext?: string;
+  mode?: "background" | "foreground";
 };

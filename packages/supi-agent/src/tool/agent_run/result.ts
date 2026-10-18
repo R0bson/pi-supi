@@ -1,7 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { type AggregateSection, boundAggregateOutput } from "./aggregate.ts";
 import type { runDelegationBatch } from "./batch-runner.ts";
-import type { BatchTaskResult } from "./batch-types.ts";
+import type { BatchTaskResult, DelegationBatchHandle } from "./batch-types.ts";
 import type { AgentConversationView } from "./conversation-view.ts";
 
 /** Batch outcome returned by the delegation runner. */
@@ -16,7 +16,10 @@ export interface AgentRunResultDetails {
 }
 
 /** Format the joined model-facing batch report. */
-export function formatModelResult(results: readonly BatchTaskResult[]): {
+export function formatModelResult(
+  results: readonly BatchTaskResult[],
+  introduction?: string,
+): {
   text: string;
   fullOutputPath?: string;
 } {
@@ -31,16 +34,38 @@ export function formatModelResult(results: readonly BatchTaskResult[]): {
       body: "",
     };
   });
+  if (introduction) sections.unshift({ overhead: introduction, body: "" });
   return boundAggregateOutput(sections);
+}
+
+/** Return a background handle without child output or Usage. */
+export function buildBackgroundStartResult(
+  handle: DelegationBatchHandle,
+): AgentToolResult<unknown> {
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Background batch ${handle.batchId} started.\n${handle
+          .progress()
+          .tasks.map((task) => `${task.taskId}: ${task.status}`)
+          .join(
+            "\n",
+          )}\nContinue independent work. Completion notices identify ready tasks. Collect with agent_result; do not poll. Use wait: true when no independent work remains.`,
+      },
+    ],
+    details: { mode: "background", batchId: handle.batchId, ...handle.progress() },
+  };
 }
 
 /** Assemble the model-facing agent_run result for one completed batch. */
 export function buildAgentRunResult(
   outcome: DelegationBatchOutcome,
   sharedContext?: string,
+  introduction?: string,
 ): AgentToolResult<AgentRunResultDetails> {
   const { results, aggregateUsage } = outcome;
-  const formatted = formatModelResult(results);
+  const formatted = formatModelResult(results, introduction);
   return {
     content: [{ type: "text", text: formatted.text }],
     details: {

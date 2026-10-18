@@ -15,12 +15,12 @@ import { orderedRuns, type RunSection, runListItem } from "./agents-run-list.ts"
 import { nextRunSelection } from "./agents-run-switcher.ts";
 import { handleRunViewerPageInput, handleTranscriptNavigation } from "./agents-run-viewer-input.ts";
 import {
-  formatRunConversationHeading,
   formatRunViewerStatus,
   renderAgentsRunFooter,
   renderAgentsRunHeader,
   renderAgentsRunHints,
   renderAgentsRunList,
+  renderRunPageHeading,
 } from "./agents-run-viewer-render.ts";
 import { AgentsTranscriptPane } from "./agents-transcript-pane.ts";
 
@@ -121,7 +121,7 @@ export class AgentsRunViewer {
     if (steeringActive && height <= 4) {
       const content = [
         ...steeringLines,
-        ...(notice ? [this.#line(this.theme.fg("warning", notice), width)] : []),
+        ...(notice ? [truncateToWidth(` ${this.theme.fg("warning", notice)}`, width)] : []),
       ].slice(-height);
       while (content.length < height) content.unshift("");
       return content.map((line) => truncateToWidth(line, width));
@@ -136,13 +136,15 @@ export class AgentsRunViewer {
       steeringActive,
     });
     const selectedRun = this.selectedRun;
-    const runHeading = formatRunConversationHeading(
-      selectedRun,
-      this.#visibleRuns,
-      this.#section,
-      this.#transcript.isIncomplete,
-    );
-    const pageHeading = this.#page === "list" ? [] : [this.#line(runHeading.text, width)];
+    const runHeading = renderRunPageHeading({
+      theme: this.theme,
+      run: selectedRun,
+      runs: this.#visibleRuns,
+      section: this.#section,
+      transcriptIncomplete: this.#transcript.isIncomplete,
+      width,
+    });
+    const pageHeading = this.#page === "list" ? [] : runHeading.lines;
     const footerContent = renderAgentsRunFooter({
       theme: this.theme,
       hints: renderAgentsRunHints({
@@ -392,9 +394,5 @@ export class AgentsRunViewer {
     return typeof this.keybindings?.matches === "function"
       ? this.keybindings.matches(data, action)
       : matchesKey(data, fallback);
-  }
-
-  #line(text: string, width: number): string {
-    return truncateToWidth(` ${text}`, width);
   }
 }

@@ -116,6 +116,7 @@ describe("/agents selected-run control with an active Delegation Batch", () => {
       tool.execute(
         "call-1",
         {
+          mode: "foreground",
           tasks: [
             { id: "selected", profile: "explore", instructions: "Inspect selected" },
             { id: "sibling", profile: "explore", instructions: "Inspect sibling" },

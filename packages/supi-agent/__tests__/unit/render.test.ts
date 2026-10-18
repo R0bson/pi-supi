@@ -14,6 +14,17 @@ describe("renderCall", () => {
 });
 
 describe("renderResult", () => {
+  it("renders a background receipt as started, not finished", () => {
+    const result = renderResult(
+      { details: { mode: "background", batchId: "batch-123", tasks: [], totalCount: 1 } },
+      { expanded: false, isPartial: false },
+      mockTheme as never,
+    );
+    const text = result.render(120).join("\n");
+    expect(text).toContain("background");
+    expect(text).toContain("batch-123");
+    expect(text).not.toContain("finished");
+  });
   it("renders partial progress", () => {
     const result = renderResult(
       { details: { tasks: [], completedCount: 1, totalCount: 2 } },

@@ -15,6 +15,8 @@
 - Resolve explicit profile models against the containing session's authenticated scoped-model policy before any Agent Run starts.
 - Use the existing headless Code Intelligence profile only; do not load the full interactive extension into children.
 - Keep diagnostics bounded and omit profile prompt contents, credentials, and raw filesystem errors.
+- Keep background batches session-owned and branch-owned. Parent abort cancels active background work; normal settlement does not. Never detach startup or cleanup from the shared registry.
+- Commit background Usage receipts only from stored tool results. Do not infer accounting from a prepared or delivered notice.
 - Register the Agent Run setting in the factory. Register Enabled, Model, and Thinking profile settings at session start; profile settings write only partial user `profile.json` manifests and never package profile files. Enabled changes require reload; Model and Thinking apply to the next run.
 
 ## Verification

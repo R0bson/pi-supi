@@ -191,6 +191,19 @@ export function renderResult(
       0,
     );
   }
+  const background = result.details as
+    | (BatchProgressState & { mode?: string; batchId?: string })
+    | undefined;
+  if (background?.mode === "background") {
+    return new Text(
+      [
+        theme.fg("accent", `Agent Run started in background · ${background.batchId ?? ""}`),
+        ...background.tasks.map((task) => formatLiveTask(task, theme, options.expanded)),
+      ].join("\n"),
+      0,
+      0,
+    );
+  }
   return renderFinal(result.details as BatchDetails | undefined, options.expanded, theme);
 }
 

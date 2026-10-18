@@ -71,7 +71,10 @@ export function createHarness(mocks: AgentRunMocks, entries: unknown[] = []) {
     getActiveToolNames: vi.fn(() => ["read"]),
     getAllTools: vi.fn(() => []),
     getToolDefinition: vi.fn(() => undefined),
-    getSessionStats: vi.fn(() => ({ tokens: { input: 0, output: 0, total: 0 } })),
+    getSessionStats: vi.fn(() => ({
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+    })),
     getLastAssistantText: vi.fn(() => "done"),
   };
   const runtime = {

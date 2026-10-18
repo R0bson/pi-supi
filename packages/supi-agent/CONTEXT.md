@@ -52,6 +52,26 @@ _Avoid_: Job, step, chain link
 An ordered set of independent Delegation Tasks accepted only when every selected profile and policy resolves successfully. Every task in a valid read-only multi-task batch starts concurrently without a queue; canceling the batch cancels every active Agent Run in it.
 _Avoid_: Workflow, chain, DAG
 
+**Background Delegation Batch**:
+A Delegation Batch whose caller can continue before its Agent Run Outcomes are available. It belongs to the containing session.
+_Avoid_: Async run, detached job, persistent worker
+
+**Foreground Delegation Batch**:
+A Delegation Batch whose caller waits until all of its Agent Run Outcomes are available.
+_Avoid_: Synchronous run, blocking worker
+
+**Delegation Task Result**:
+The caller-facing terminal status, bounded output, and Usage for one Delegation Task. It is available independently of sibling tasks.
+_Avoid_: Batch result, completion notice, Agent Run Outcome
+
+**Delegation Completion Notice**:
+A parent-facing notice that one or more Delegation Task Results are available for collection. It identifies the tasks and their terminal status but does not contain their output.
+_Avoid_: Task result, result payload, progress update
+
+**Delegation Result Collection**:
+The caller's retrieval of available Delegation Task Results. It is separate from task completion and does not remove the results.
+_Avoid_: Completion notification, result consumption, polling
+
 **Delegation Batch Result**:
 The ordered parent-facing result of a Delegation Batch. It has one aggregate model-output bound; each task remains represented, and its bounded final text and Conversation View stay in human details. A temporary Markdown spill holds bounded task text when needed. The full Agent Run Transcript is separate and never enters the tool result.
 _Avoid_: unbounded joined output, transcript payload, continuation artifact

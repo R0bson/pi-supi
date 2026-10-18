@@ -28,6 +28,8 @@ export interface AgentRunDisplayDetails {
   readonly verdict?: string;
   readonly findingCount?: number;
   readonly blockingFindingCount?: number;
+  /** Caller-owned background Usage state; the runtime only renders it. */
+  readonly usageStatus?: "uncollected" | "reported";
 }
 
 /** Neutral metadata for one Agent Run in the containing-session viewer. */

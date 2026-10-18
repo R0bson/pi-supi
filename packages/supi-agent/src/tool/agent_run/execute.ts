@@ -1,22 +1,21 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { AgentRunRegistry } from "@mrclrchtr/supi-agent-runtime/api";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
+import type { DelegationController } from "../../delegation/controller.ts";
 import { agentProfileCatalogueStore } from "../../session.ts";
-import { runDelegationBatch } from "./batch-runner.ts";
 import type { BatchProgressState } from "./batch-types.ts";
-import { buildAgentRunResult } from "./result.ts";
+import { buildAgentRunResult, buildBackgroundStartResult } from "./result.ts";
 import type { AgentRunToolParams } from "./schema.ts";
 
 type AgentRunExecute = NonNullable<Parameters<ExtensionAPI["registerTool"]>[0]["execute"]>;
 
 /** Build the agent_run execute function for one registry and schema instance. */
 export function makeAgentRunExecute(
-  registry: AgentRunRegistry,
+  controller: DelegationController,
   parameters: TSchema,
 ): AgentRunExecute {
   // biome-ignore lint/complexity/useMaxParams: Pi execute contract requires 5 parameters.
-  return async (_toolCallId, params, _signal, onUpdate, ctx) => {
+  return async (toolCallId, params, _signal, onUpdate, ctx) => {
     const catalogue = agentProfileCatalogueStore.get();
     if (!catalogue) {
       throw new Error("Agent Profile catalogue is not yet loaded. Wait for session start.");
@@ -39,9 +38,16 @@ export function makeAgentRunExecute(
         }
       : undefined;
 
-    const outcome = await runDelegationBatch(toolParams, catalogue, ctx, onBatchUpdate, registry);
-
-    // Finalize the batch after its transcript files have closed.
-    return buildAgentRunResult(outcome, toolParams.sharedContext);
+    const batch = controller.start({
+      params: toolParams,
+      catalogue,
+      ctx,
+      callId: toolCallId,
+      onUpdate: onBatchUpdate,
+    });
+    if (batch.mode === "background") return buildBackgroundStartResult(batch.handle);
+    const result = buildAgentRunResult(await batch.handle.result, toolParams.sharedContext);
+    controller.retainOutput(result.details.fullOutputPath);
+    return result;
   };
 }

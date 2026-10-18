@@ -2,19 +2,22 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadSupiConfig } from "@mrclrchtr/supi-core/config";
 import { defineConfigSettings, registerSettings } from "@mrclrchtr/supi-core/settings";
 import { agentProfileCatalogueStore } from "./session.ts";
+import { AGENT_RUN_TOOL_NAME } from "./tool/names.ts";
 
 /** Persisted Agent Run settings. */
 export interface AgentConfig extends Record<string, unknown> {
   /** Enable the agent_run agent tool. */
   agentToolEnabled: boolean;
+  /** Maximum active foreground and background Agent Runs in one session. */
+  maxConcurrentRuns: number;
 }
 
 /** Shared SuPi configuration section owned by this package. */
 export const AGENT_CONFIG_SECTION = "agent";
-const AGENT_RUN_TOOL_NAME = "agent_run";
 /** Defaults that retain Agent Run availability. */
 export const AGENT_DEFAULTS: AgentConfig = {
   agentToolEnabled: true,
+  maxConcurrentRuns: 4,
 };
 
 /** Load merged and normalized Agent Run settings. */
@@ -24,7 +27,13 @@ export function loadAgentConfig(cwd: string, homeDir?: string): AgentConfig {
     typeof raw.agentToolEnabled === "boolean"
       ? raw.agentToolEnabled
       : AGENT_DEFAULTS.agentToolEnabled;
-  return { agentToolEnabled };
+  const maxConcurrentRuns =
+    typeof raw.maxConcurrentRuns === "number" &&
+    Number.isSafeInteger(raw.maxConcurrentRuns) &&
+    raw.maxConcurrentRuns > 0
+      ? raw.maxConcurrentRuns
+      : AGENT_DEFAULTS.maxConcurrentRuns;
+  return { agentToolEnabled, maxConcurrentRuns };
 }
 
 /** Activate Agent Run only when its setting is on and the current catalogue has usable profiles. */
@@ -54,6 +63,14 @@ export function registerAgentSettings(pi: ExtensionAPI, homeDir?: string): void 
           key: "agentToolEnabled",
           label: "Agent Run tool",
           description: "Enable agent_run for agents.",
+        },
+        {
+          kind: "number",
+          key: "maxConcurrentRuns",
+          label: "Active Agent Run limit",
+          description:
+            "Positive integer. Count foreground and background Agent Runs together; exclude Reviews. Lowering the limit does not stop active runs.",
+          values: ["1", "2", "4", "8", "16"],
         },
       ],
       afterPersist: ({ cwd }) => syncAgentRunTool(pi, cwd, homeDir),

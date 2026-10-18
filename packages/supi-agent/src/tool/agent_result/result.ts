@@ -1,0 +1,37 @@
+import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
+import type { BatchTaskResult, DelegationBatchHandle } from "../agent_run/batch-types.ts";
+import { buildAgentRunResult } from "../agent_run/result.ts";
+import { AGENT_COMPLETION_MESSAGE_TYPE } from "../names.ts";
+
+/** Build a bounded snapshot with terminal results and pending status. */
+export function buildCollectedResult(
+  handle: DelegationBatchHandle,
+): AgentToolResult<Record<string, unknown>> {
+  const outcome = handle.snapshot();
+  const pending = handle
+    .progress()
+    .tasks.filter((task) => !outcome.results.some((ready) => ready.taskId === task.taskId));
+  const status = pending.length
+    ? `Pending: ${pending.map((task) => `${task.taskId} (${task.status})`).join(", ")}. Wait for a completion notice or use wait: true; do not poll.`
+    : "Batch complete.";
+  const result = buildAgentRunResult(outcome, undefined, status);
+  return {
+    ...result,
+    details: {
+      ...result.details,
+      batchId: handle.batchId,
+      complete: pending.length === 0,
+      pending,
+    },
+  };
+}
+
+/** Build a small completion notice without task output or Usage. */
+export function buildCompletionNotice(batchId: string, tasks: readonly BatchTaskResult[]) {
+  return {
+    customType: AGENT_COMPLETION_MESSAGE_TYPE,
+    content: `Background batch ${batchId}: ${tasks.map((task) => `${JSON.stringify(task.taskId)} ${task.status}`).join(", ")}. Collect available results and Usage with agent_result.`,
+    display: true,
+    details: { batchId },
+  };
+}

@@ -1,8 +1,9 @@
 import type { TSchema } from "typebox";
 import { agentProfileCatalogueStore } from "../../session.ts";
+import { AGENT_RUN_TOOL_NAME } from "../names.ts";
 import { buildAgentRunSchema } from "./schema.ts";
 
-export const AGENT_RUN_TOOL_NAME = "agent_run";
+export { AGENT_RUN_TOOL_NAME } from "../names.ts";
 export const AGENT_RUN_TOOL_LABEL = "Agent Run";
 
 /** Build the parameter schema against the current profile catalogue. */

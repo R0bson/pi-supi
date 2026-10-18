@@ -1,5 +1,6 @@
 import type { SelectItem } from "@earendil-works/pi-tui";
 import type { AgentsOverlayRun } from "./agents-overlay-data.ts";
+import { formatRunUsageStatus } from "./agents-run-usage.ts";
 
 export type RunSection = "agents" | "reviews";
 
@@ -48,8 +49,10 @@ export function runListPreview(run: AgentsOverlayRun): string[] {
   const summary = run.active
     ? run.recentActivity?.at(-1)
     : run.result?.finalText?.split("\n", 1)[0]?.trim();
+  const usage = formatRunUsageStatus(run);
   return [
     ...(review ? [review] : []),
+    ...(usage ? [usage] : []),
     ...(summary ? [`${run.active ? "Activity" : "Result"}: ${summary}`] : []),
   ];
 }

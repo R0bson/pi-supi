@@ -8,6 +8,7 @@ import type { AgentsOverlayRun } from "./agents-overlay-data.ts";
 import { centerLegend } from "./agents-overlay-render.ts";
 import { formatElapsed, type RunSection, runListPreview } from "./agents-run-list.ts";
 import { runSwitcherPosition } from "./agents-run-switcher.ts";
+import { formatRunUsageStatus, getRunUsageStatus } from "./agents-run-usage.ts";
 
 /** Render the selected run, its filtered position, and its stable status. */
 export function formatRunConversationHeading(
@@ -33,6 +34,25 @@ export function formatRunConversationHeading(
   return {
     text: `${sectionLabel} · ${runPosition} · ${run.taskId} — ${run.label} · ${state}${review ? ` · ${review}` : ""}${transcriptIncomplete ? " · transcript incomplete" : ""}`,
     canSwitchRuns: position.canSwitch,
+  };
+}
+
+/** Render a run heading plus its optional caller-owned Usage state. */
+export function renderRunPageHeading(options: {
+  readonly theme: Theme;
+  readonly run?: AgentsOverlayRun;
+  readonly runs: readonly AgentsOverlayRun[];
+  readonly section: RunSection;
+  readonly transcriptIncomplete: boolean;
+  readonly width: number;
+}): { readonly lines: string[]; readonly canSwitchRuns: boolean } {
+  const { theme, run, runs, section, transcriptIncomplete, width } = options;
+  const heading = formatRunConversationHeading(run, runs, section, transcriptIncomplete);
+  const usage = formatRunUsageStatus(run);
+  const tone = getRunUsageStatus(run) === "uncollected" ? "warning" : "dim";
+  return {
+    lines: [line(heading.text, width), ...(usage ? [line(theme.fg(tone, usage), width)] : [])],
+    canSwitchRuns: heading.canSwitchRuns,
   };
 }
 

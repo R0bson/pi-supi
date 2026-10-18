@@ -25,9 +25,13 @@ async function collectTools() {
   m = await import(`${PACKAGES}/supi-debug/src/tool/debug/spec.ts`);
   add("supi-debug", "debug", m.debugSpec);
   m = await import(`${PACKAGES}/supi-agent/src/tool/agent_run/spec.ts`);
-  // agent_build parameters depend on the runtime profile catalogue; the
+  // agent_run parameters depend on the runtime profile catalogue; the
   // factory with an unloaded catalogue is the canonical static shape.
   add("supi-agent", "agent_run", { ...m.agentRunSpec, parameters: m.buildAgentRunParameters() });
+  m = await import(`${PACKAGES}/supi-agent/src/tool/agent_result/spec.ts`);
+  add("supi-agent", "agent_result", m.agentResultSpec);
+  m = await import(`${PACKAGES}/supi-agent/src/tool/agent_cancel/spec.ts`);
+  add("supi-agent", "agent_cancel", m.agentCancelSpec);
   m = await import(`${PACKAGES}/supi-web/src/tool/web_fetch_md/spec.ts`);
   add("supi-web", "web_fetch_md", m.webFetchMdSpec);
   m = await import(`${PACKAGES}/supi-web/src/tool/web_docs_search/spec.ts`);

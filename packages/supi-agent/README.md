@@ -8,7 +8,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/mrclrchtr/supi)](https://github.com/mrclrchtr/supi/stargazers) [![npm downloads](https://img.shields.io/npm/dm/@mrclrchtr/supi-agent)](https://www.npmjs.com/package/@mrclrchtr/supi-agent)
 
-Profile catalogue, field-level profile settings, and resource policy for foreground Agent Runs in PI.
+Profile catalogue, field-level profile settings, and resource policy for background and foreground Agent Runs in Pi.
 
 This package is the policy layer for `@mrclrchtr/supi-agent-runtime`. It discovers Profile Directory sources from package defaults, `~/.pi/agent/supi/agents/`, and trusted project `.pi/supi/agents/` directories. It also contributes per-profile Enabled, Model, and Thinking rows to `/supi-settings`.
 
@@ -19,7 +19,23 @@ Built-in profiles:
 
 Profile sources overlay fields by ID with project → global → package precedence. A partial user manifest can pin only `model` or `thinking`; package tools and prompts continue to flow through. An invalid source falls through with a bounded diagnostic. Profiles are context-isolated, not permission- or filesystem-sandboxed.
 
-Changes to **Agent Run tool** and each profile's **Model** and **Thinking** settings apply immediately. `/agents` stays available when `agent_run` is off.
+Changes to **Agent Run tool**, **Active Agent Run limit**, and each profile's **Model** and **Thinking** settings apply immediately. `/agents`, `agent_result`, and `agent_cancel` stay available when new starts through `agent_run` are off.
+
+## Background delegation
+
+In TUI and RPC, `agent_run` defaults to background execution for read-only profiles such as `explore`. It returns a batch handle so the parent can continue independent work. Use `mode: "foreground"` to wait in the starting call. Mutation-capable profiles such as `general` default to foreground and reject explicit background requests. Print and JSON modes also default to foreground and reject explicit background requests.
+
+- `agent_result({ batchId })` returns completed task results and pending status. Results are repeatable. Do not poll.
+- `agent_result({ batchId, wait: true })` waits for all tasks to finish.
+- `agent_cancel({ batchId })` requests a stop for the active tasks in one background batch. Collect its terminal results afterward.
+- Each task can produce a completion notice before its siblings finish. The notice reaches a busy parent at the next safe turn boundary, or starts a turn when the parent is idle. It contains identifiers and status, not task output.
+- The default limit is four active Agent Runs per session, counting foreground and background together. Set `agent.maxConcurrentRuns` in SuPi configuration or use **Active Agent Run limit** in `/supi-settings`. The value must be a positive integer. A batch that does not fit is rejected as a whole; there is no queue. Lowering the limit does not stop existing runs. Review limits are separate.
+- Parent abort stops active background batches and pauses automatic delivery until a later user-originated prompt. Normal parent completion leaves them running. Idle Escape keeps Pi's normal editor behavior; use `/agents` to stop selected runs.
+- Leaving the conversation branch that contains a batch's launch cancels active tasks. Compaction alone does not cancel them. Reload, session replacement, and shutdown stop owned runs and expire handles. No restart recovery is provided.
+- Child Usage enters Pi's parent totals when Pi first stores a collection's Usage. A result hook can mark delivery as failed while preserving that Usage; retrying the output does not charge it again. Repeated collection does not count it again. `/agents` marks uncollected Usage: parent totals remain incomplete if results are never collected.
+- Read-only runs share the parent's working directory. They do not read a frozen snapshot.
+
+See the [background delegation design](docs/background-delegation.md) for the full contract.
 
 ## Enable or disable profiles
 
@@ -57,7 +73,7 @@ Use `/agents` in TUI mode to inspect Agent and Reviewer runs in the current sess
 - The bounded Conversation View can omit old entries. The runtime-owned human-only transcript keeps captured messages for Agent and Reviewer runs until the containing session ends. Its retention does not depend on Review audit settings.
 - Use `s` to steer the selected run when steering is available. A text field opens inside the viewer. Press Enter to send or Esc to cancel.
 - Use `x` to request a stop for a starting or running Agent or Reviewer Run. Press Enter or `y` to confirm. A startup stop can wait for PI setup to finish. Stopping one Reviewer Run does not stop its sibling tasks.
-- Mouse-wheel input scrolls the transcript or selects a run. Closing the viewer does not stop Agent Runs. PI's normal outer-tool cancellation still stops the full Delegation Batch.
+- Mouse-wheel input scrolls the transcript or selects a run. Closing the viewer does not stop Agent Runs. Parent abort stops active background Delegation Batches; foreground tool cancellation stops that foreground batch.
 
 Transcript files are temporary JSONL files in a private directory for the parent session. They have no application cap or restart recovery. A storage failure marks capture incomplete but does not stop a run. The viewer shows the available transcript and the incomplete status. Session shutdown removes the directory.
 

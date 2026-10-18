@@ -1,65 +1,67 @@
 import { randomUUID } from "node:crypto";
 import type { Usage } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type {
-  AgentRunDisplayConversation,
-  AgentRunRegistry,
-  AgentRunSessionView,
-  RegisteredAgentRunHandle,
-} from "@mrclrchtr/supi-agent-runtime/api";
-import { combineAgentRunUsage, startRegisteredAgentRun } from "@mrclrchtr/supi-agent-runtime/api";
-import { toAgentToolNames } from "../../capabilities.ts";
-import type { AgentProfile, ProfileCatalogue } from "../../types.ts";
+import type { AgentRunRegistry } from "@mrclrchtr/supi-agent-runtime/api";
+import { combineAgentRunUsage } from "@mrclrchtr/supi-agent-runtime/api";
+import type { ProfileCatalogue } from "../../types.ts";
 import type { ResolvedTask } from "./batch-preflight.ts";
 import { preflightDelegationBatch } from "./batch-preflight.ts";
-import type { BatchProgressState, BatchTaskProgress, BatchTaskResult } from "./batch-types.ts";
-import type { AgentConversationView, ConversationTaskMetadata } from "./conversation-view.ts";
-import { buildConversationView } from "./conversation-view.ts";
-import {
-  AgentRunTelemetry,
-  failureCodeFromOutcome,
-  recordAgentRunOutcomeDebug,
-  statusFromOutcome,
-} from "./run-telemetry.ts";
+import type {
+  BatchProgressState,
+  BatchTaskProgress,
+  BatchTaskResult,
+  DelegationBatchHandle,
+  DelegationBatchOutcome,
+  StartDelegationBatchOptions,
+} from "./batch-types.ts";
+import type { AgentConversationView } from "./conversation-view.ts";
 import type { AgentRunToolParams } from "./schema.ts";
-import { capHumanText, capModelText, humanTextOverflow, modelTextOverflow } from "./text-caps.ts";
-import { summarizeToolActivity } from "./tool-summary.ts";
+import type { StartedBatchTask } from "./task-runner.ts";
+import { startBatchTask } from "./task-runner.ts";
 
-// ── Progress ─────────────────────────────────────────────────────
+// ── Progress helpers ─────────────────────────────────────────────
 
 type OnUpdate = (details: BatchProgressState) => void;
 
-// ── Mapper helpers ───────────────────────────────────────────────
-
-// ── Build child prompt ──────────────────────────────────────────
-
-function buildChildPrompt(input: { sharedContext?: string; instructions: string }): string {
-  if (!input.sharedContext?.trim()) return input.instructions;
-  return `${input.sharedContext.trim()}\n\n${input.instructions}`;
+function isTerminalStatus(status: BatchTaskProgress["status"]): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "canceled" || status === "timeout"
+  );
 }
 
-// ── Execute batch ────────────────────────────────────────────────
+function initialProgress(task: ResolvedTask): BatchTaskProgress {
+  return {
+    taskId: task.taskId,
+    profileId: task.profileId,
+    status: "starting",
+    turns: 0,
+    toolUses: 0,
+    modelId: `${task.model.provider}/${task.model.id}`,
+    thinkingLevel: task.inputs.thinkingLevel,
+  };
+}
+
+function copyProgress(progress: BatchTaskProgress): BatchTaskProgress {
+  return {
+    ...progress,
+    recentActivity: progress.recentActivity ? [...progress.recentActivity] : undefined,
+  };
+}
+
+// ── Compatibility foreground interface ───────────────────────────
 
 /**
  * Preflight a Delegation Batch atomically, execute every Agent Run, and return ordered results
- * with aggregate usage. The caller supplies the registry for active-run tracking and shutdown.
+ * with aggregate usage. This awaited interface remains for foreground runs and current callers.
  */
-// biome-ignore lint/complexity/noExcessiveLinesPerFunction: batch execution stays in one audited function.
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: batch lifecycle orchestration stays in one audited function.
-// biome-ignore lint/complexity/useMaxParams: batch orchestration needs catalogue, context, registry.
+// biome-ignore lint/complexity/useMaxParams: compatibility signature keeps five parameters.
 export async function runDelegationBatch(
   params: AgentRunToolParams,
   catalogue: ProfileCatalogue,
   ctx: ExtensionContext,
   onUpdate?: OnUpdate,
   registry?: AgentRunRegistry,
-): Promise<{
-  results: BatchTaskResult[];
-  aggregateUsage?: Usage;
-  conversationViews: Map<string, AgentConversationView>;
-  batchId: string;
-  runKeys: ReadonlyMap<string, string>;
-}> {
+): Promise<DelegationBatchOutcome> {
   const preflightResult = preflightDelegationBatch(params, catalogue, ctx);
   if ("errors" in preflightResult) {
     const message = preflightResult.errors
@@ -68,310 +70,153 @@ export async function runDelegationBatch(
     throw new Error(`Delegation Batch preflight failed:\n${message}`);
   }
 
-  const resolved = preflightResult.tasks;
+  // Capture plain data before asynchronous child work. Do not retain the ExtensionContext.
+  const cwd = ctx.cwd;
+  const signal = ctx.signal ?? undefined;
+  return startDelegationBatch({
+    params,
+    tasks: preflightResult.tasks,
+    cwd,
+    ...(signal ? { signal } : {}),
+    ...(registry ? { registry } : {}),
+    ...(onUpdate ? { onUpdate } : {}),
+  }).result;
+}
+
+// ── Background-capable batch runner ──────────────────────────────
+
+/**
+ * Start a validated Delegation Batch without waiting for child setup or results.
+ *
+ * The caller must run preflight and reserve capacity first. This function does not preflight
+ * again and does not own parent-abort, branch, notice, capacity, or Usage-receipt policy.
+ */
+export function startDelegationBatch(options: StartDelegationBatchOptions): DelegationBatchHandle {
+  const { params, tasks, registry, onUpdate, onTaskResult } = options;
   const batchId = randomUUID();
   const runKeys = new Map<string, string>();
-  const totalCount = resolved.length;
   const progressMap = new Map<string, BatchTaskProgress>();
   const conversationViews = new Map<string, AgentConversationView>();
+  const results: Array<BatchTaskResult | undefined> = Array(tasks.length).fill(undefined);
+  const startedTasks: StartedBatchTask[] = [];
+  const completions: Array<Promise<BatchTaskResult>> = [];
+  let startFailed = false;
+  let stopPromise: Promise<void> | undefined;
 
-  const publishProgress = (): void => {
+  for (const task of tasks) {
+    runKeys.set(task.taskId, randomUUID());
+    progressMap.set(task.taskId, initialProgress(task));
+  }
+
+  const progressSnapshot = (): BatchProgressState => {
+    const progressTasks = tasks.map((task) => {
+      const progress = progressMap.get(task.taskId);
+      return progress ? copyProgress(progress) : initialProgress(task);
+    });
+    return {
+      tasks: progressTasks,
+      completedCount: progressTasks.filter((task) => isTerminalStatus(task.status)).length,
+      totalCount: tasks.length,
+    };
+  };
+
+  const publishUpdate = (): void => {
     if (!onUpdate) return;
-    const tasks = [...progressMap.values()];
-    const completedCount = tasks.filter(
-      (task) =>
-        task.status === "completed" ||
-        task.status === "failed" ||
-        task.status === "canceled" ||
-        task.status === "timeout",
-    ).length;
-    onUpdate({ tasks, completedCount, totalCount });
+    try {
+      onUpdate(progressSnapshot());
+    } catch {
+      // Progress is presentation-only and cannot change batch execution.
+    }
   };
 
   const setProgress = (progress: BatchTaskProgress): void => {
-    progressMap.set(progress.taskId, {
-      ...progress,
-      recentActivity: progress.recentActivity ? [...progress.recentActivity] : undefined,
-    });
-    publishProgress();
+    progressMap.set(progress.taskId, copyProgress(progress));
+    publishUpdate();
   };
 
-  // Check: ensure profile's required tools are active in the child session.
-  const makeReadinessCheck = (
-    profile: AgentProfile,
-  ): ((session: AgentRunSessionView) => boolean) => {
-    return (session: AgentRunSessionView): boolean => {
-      const activeNames = session.getActiveToolNames();
-      const required = toAgentToolNames(profile.manifest.tools);
-      if (required.length === 0) return true;
-      return required.every((name) => activeNames.includes(name));
-    };
-  };
-
-  // Start all runs.
-  const handles: Array<{
-    taskId: string;
-    profileId: string;
-    modelId: string;
-    thinkingLevel: ResolvedTask["inputs"]["thinkingLevel"];
-    handle: RegisteredAgentRunHandle<string>;
-    telemetry: AgentRunTelemetry;
-    runKey: string;
-  }> = [];
-  for (const task of resolved) {
-    const taskMetadata: ConversationTaskMetadata = {
-      instructions: task.instructions,
-    };
-    const modelId = `${task.model.provider}/${task.model.id}`;
-    const runKey = randomUUID();
-    runKeys.set(task.taskId, runKey);
-    const metadata = {
-      runKey,
-      batchId,
-      taskId: task.taskId,
-      kind: "Agent Run",
-      label: task.profileId,
-      cwd: task.inputs.cwd,
-      modelId,
-      thinkingLevel: task.inputs.thinkingLevel,
-      tools: task.inputs.tools,
-      taskDescription: task.instructions,
-      ...(params.sharedContext === undefined ? {} : { sharedContext: params.sharedContext }),
-      startedAt: Date.now(),
-    };
-    setProgress({
-      taskId: task.taskId,
-      profileId: task.profileId,
-      status: "starting",
-      turns: 0,
-      toolUses: 0,
-      modelId,
-      thinkingLevel: task.inputs.thinkingLevel,
-    });
-    const recentActivity: string[] = [];
-    const prompt = buildChildPrompt({
-      sharedContext: params.sharedContext,
-      instructions: task.instructions,
-    });
-    let liveSession: AgentRunSessionView | undefined;
-    const telemetry = new AgentRunTelemetry();
-    const currentConversationView = (
-      queuedSteering: readonly string[] = [],
-    ): AgentConversationView =>
-      liveSession
-        ? buildConversationView({
-            taskId: task.taskId,
-            profileId: task.profileId,
-            messages: liveSession.messages,
-            queuedSteering,
-            taskMetadata,
-          })
-        : (conversationViews.get(task.taskId) ?? {
-            taskId: task.taskId,
-            profileId: task.profileId,
-            entries: [],
-            omittedEntryCount: 0,
-            omittedCharacterCount: 0,
-            textTruncated: false,
-            taskMetadata,
-          });
-    const displayConversation = (
-      queuedSteering: readonly string[],
-    ): AgentRunDisplayConversation => {
-      const view = currentConversationView(queuedSteering);
-      return {
-        entries: view.entries,
-        omittedEntryCount: view.omittedEntryCount,
-        omittedCharacterCount: view.omittedCharacterCount,
-        textTruncated: view.textTruncated,
-      };
-    };
-
-    const handle = startRegisteredAgentRun<string>({
-      inputs: task.inputs,
-      prompt,
-      signal: ctx.signal ?? undefined,
-      timeoutMs: task.timeoutMs,
-      readinessCheck: makeReadinessCheck(task.profile),
-      completionResolver: (session) => session.getLastAssistantText(),
-      observer: (session) => {
-        liveSession = session;
-        registry?.refresh();
-        const unsubscribe = session.subscribe((event) => {
-          telemetry.observe(event);
-          const activity = summarizeToolActivity(event);
-          if (activity) {
-            recentActivity.push(activity);
-            if (recentActivity.length > 5) recentActivity.shift();
-            const current = progressMap.get(task.taskId);
-            if (current) {
-              setProgress({
-                ...current,
-                recentActivity,
-              });
-            }
-          }
-          registry?.refresh();
-        });
-
-        // The cleanup runs during finish, before result resolves.
-        return () => {
-          unsubscribe();
-          try {
-            const view = currentConversationView(registry?.queuedSteering(runKey));
-            conversationViews.set(task.taskId, view);
-          } catch {
-            // Conversation View is presentation-only.
-          } finally {
-            liveSession = undefined;
-          }
-        };
-      },
-      registry,
-      registration: {
-        metadata,
-        getConversation: displayConversation,
-        getRecentActivity: () => recentActivity,
-      },
-    });
-
-    handles.push({
-      taskId: task.taskId,
-      runKey,
-      profileId: task.profileId,
-      modelId,
-      thinkingLevel: task.inputs.thinkingLevel,
-      handle,
-      telemetry,
-    });
-    handle.subscribe((progress) => {
-      if (progress.status === "running") telemetry.markRunning();
-      setProgress({
-        taskId: task.taskId,
-        profileId: task.profileId,
-        status: progress.status,
-        turns: progress.turns,
-        toolUses: progress.toolUses,
-        usage: progress.usage,
-        recentActivity,
-        modelId,
-        thinkingLevel: task.inputs.thinkingLevel,
-      });
-    });
-  }
-
-  // Await all; output order matches input.
-  const settled = await Promise.allSettled(handles.map((entry) => entry.handle.result));
-
-  const results: BatchTaskResult[] = [];
-  const usageList: Usage[] = [];
-
-  for (let index = 0; index < handles.length; index++) {
-    const { taskId, profileId, modelId, thinkingLevel, telemetry, runKey } = handles[index];
-    const outcome = settled[index];
-
-    if (outcome.status === "rejected") {
-      results.push({
-        taskId,
-        profileId,
-        status: "failed",
-        failureCode: "unexpected-runner-failure",
-        turns: 0,
-        toolUses: 0,
-        humanTruncated: false,
-        modelTruncated: false,
-        modelId,
-        thinkingLevel,
-        taskMetadata: resolved[index]?.instructions
-          ? {
-              instructions: resolved[index].instructions,
-            }
-          : undefined,
-      });
-      setProgress({
-        taskId,
-        profileId,
-        status: "failed",
-        turns: 0,
-        toolUses: 0,
-        modelId,
-        thinkingLevel,
-      });
-      registry?.setDisplayResult(runKey, { failureCode: "unexpected-runner-failure" });
-      continue;
+  const buildOutcome = (): DelegationBatchOutcome => {
+    const completed = results.filter((result): result is BatchTaskResult => result !== undefined);
+    const usages: Usage[] = [];
+    for (const result of completed) {
+      if (result.usage) usages.push(result.usage);
     }
+    return {
+      results: [...completed],
+      aggregateUsage: usages.length > 0 ? combineAgentRunUsage(usages) : undefined,
+      conversationViews: new Map(conversationViews),
+      batchId,
+      runKeys: new Map(runKeys),
+    };
+  };
 
-    const agentOutcome = outcome.value;
-    const status = statusFromOutcome(agentOutcome);
-    const progress = progressMap.get(taskId);
-    recordAgentRunOutcomeDebug(
-      {
-        cwd: ctx.cwd,
-        taskId,
-        profileId,
-        modelId,
-        thinkingLevel,
-        turns: progress?.turns ?? 0,
-        toolUses: progress?.toolUses ?? 0,
-        timing: telemetry.snapshot(),
-      },
-      agentOutcome,
-    );
-    const usage = agentOutcome.usage;
-    if (usage) usageList.push(usage);
-
-    const rawText = agentOutcome.kind === "success" ? agentOutcome.value : "";
-    const modelText = capModelText(rawText);
-    const humanText = capHumanText(rawText);
-    const humanTruncated = humanTextOverflow(rawText) > 0;
-    const modelTruncated = modelTextOverflow(rawText) > 0;
-
-    results.push({
-      taskId,
-      profileId,
-      status,
-      finalText: modelText,
-      finalTextFull: humanText,
-      humanTruncated,
-      modelTruncated,
-      usage,
-      failureCode: failureCodeFromOutcome(agentOutcome),
-      turns: progressMap.get(taskId)?.turns ?? 0,
-      toolUses: progressMap.get(taskId)?.toolUses ?? 0,
-      modelId,
-      thinkingLevel,
-      taskMetadata: resolved[index]?.instructions
-        ? {
-            instructions: resolved[index].instructions,
+  publishUpdate();
+  try {
+    for (let index = 0; index < tasks.length; index++) {
+      const task = tasks[index];
+      const runKey = runKeys.get(task.taskId);
+      if (!runKey) throw new Error(`Missing run key for task "${task.taskId}".`);
+      const started = startBatchTask({
+        params,
+        task,
+        batchId,
+        runKey,
+        cwd: options.cwd,
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(registry ? { registry } : {}),
+        conversationViews,
+        onProgress: setProgress,
+      });
+      startedTasks.push(started);
+      completions.push(
+        started.completion.then((result) => {
+          results[index] = result;
+          if (!startFailed) {
+            try {
+              onTaskResult?.(result);
+            } catch {
+              // Result observers cannot change batch execution.
+            }
           }
-        : undefined,
-    });
-    registry?.setDisplayResult(runKey, {
-      finalText: humanText,
-      failureCode: failureCodeFromOutcome(agentOutcome),
-      humanTruncated,
-      modelTruncated,
-    });
-
-    setProgress({
-      taskId,
-      profileId,
-      status,
-      turns: progressMap.get(taskId)?.turns ?? 0,
-      toolUses: progressMap.get(taskId)?.toolUses ?? 0,
-      usage,
-      modelId,
-      thinkingLevel,
-    });
+          return result;
+        }),
+      );
+    }
+  } catch (error) {
+    startFailed = true;
+    for (const completion of completions) void completion.catch(() => undefined);
+    void requestStops(startedTasks);
+    throw error;
   }
 
-  const aggregateUsage = usageList.length > 0 ? combineAgentRunUsage(usageList) : undefined;
+  const result = Promise.allSettled(completions).then(() => buildOutcome());
+  const stop = (): Promise<void> => {
+    if (stopPromise !== undefined) return stopPromise;
+    const activeTasks = startedTasks.filter((started) => {
+      const status = progressMap.get(started.taskId)?.status;
+      return status === undefined || !isTerminalStatus(status);
+    });
+    stopPromise = requestStops(activeTasks);
+    return stopPromise;
+  };
 
   return {
-    results,
-    aggregateUsage,
-    conversationViews,
     batchId,
     runKeys,
+    result,
+    snapshot: buildOutcome,
+    progress: progressSnapshot,
+    stop,
   };
+}
+
+function requestStops(tasks: readonly StartedBatchTask[]): Promise<void> {
+  const stops = tasks.map((task) => {
+    try {
+      // Each stop closes admission synchronously before it awaits disposal.
+      return task.handle.stop();
+    } catch {
+      return Promise.resolve();
+    }
+  });
+  return Promise.allSettled(stops).then(() => undefined);
 }

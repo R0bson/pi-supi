@@ -90,6 +90,34 @@ it("counts persisted and live messages once by identity", async () => {
   });
 });
 
+it("includes usage SessionEntries without counting message or stats usage again", async () => {
+  const harness = createHarness(mocks, [
+    { type: "message", message: { role: "assistant", usage: usage(1) } },
+    { type: "usage", kind: "cache_warm", usage: usage(2) },
+  ]);
+  harness.session.messages = [];
+  harness.session.getSessionStats.mockReturnValue({
+    tokens: { input: 3, output: 5, cacheRead: 7, cacheWrite: 9, total: 12 },
+    cost: 6,
+  });
+  const run = startAgentRun({
+    inputs: inputs(),
+    prompt: "usage entries",
+    completionResolver: () => "done",
+  });
+
+  const outcome = await run.result;
+  expect(outcome.kind).toBe("success");
+  expect(outcome.usage).toMatchObject({
+    input: 3,
+    output: 5,
+    cacheRead: 7,
+    cacheWrite: 9,
+    totalTokens: 12,
+    cost: { total: 12 },
+  });
+});
+
 it("aggregates assistant, tool-result, compaction, and branch-summary usage", async () => {
   createHarness(mocks, [
     { type: "message", message: { role: "assistant", usage: usage(1) } },
