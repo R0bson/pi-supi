@@ -107,7 +107,7 @@ Candidate selection for Graph, Resolve, and Orientation uses one structured tran
 
 ### Refactor checks
 
-The planner accepts one target handle or anchor and one operation: `rename_symbol`, `extract_function`, `extract_variable`, `update_imports`, or `delete_dead_code`. Availability depends on the language server. Unsupported operations do not fall back to text edits.
+The planner accepts one target handle or anchor and one operation: `rename_symbol`, `extract_function`, `extract_variable`, `update_imports`, or `delete_dead_code`. Rename, import updates, and dead-code removal depend on the language server and validated edits. Function and variable extraction are currently unavailable for all languages: standard LSP code actions do not provide a safe exact extraction-name contract. Unsupported operations do not fall back to text edits.
 
 Plans are held in memory for the current session. Apply accepts only the returned `planId`; it does not create or regenerate a plan. It checks SHA-256 file fingerprints, provider-authorized roots, document versions when available, edit ranges, and overlaps before writing. Changed files require a new plan. A successful apply removes the plan.
 
@@ -115,27 +115,36 @@ Refactors can change several files. If a later write fails, the tool attempts to
 
 ## Language support
 
-Install the required language servers yourself. The extension detects project languages and starts available configured commands on `PATH` in trusted projects. It does not download or install servers. Individual semantic features depend on server support and readiness.
+The matrix shows built-in LSP routes and implemented AST operations, not a live server test. Install the required language servers yourself. The extension starts available configured commands in trusted projects; it does not download or install servers. A route does not guarantee hover, references, diagnostics, or refactors. Each semantic feature needs a ready server that supports it.
 
-Tree-sitter grammars are bundled and parse locally. Grammar selection uses the file extension, not a shebang.
+Tree-sitter grammars are bundled and parse locally without an LSP server. Both layers match file extensions without case sensitivity; AST grammar selection does not use a shebang. LSP and AST extension lists are separate.
 
-| Language | Default LSP binary | Tree-sitter file extensions |
-|---|---|---|
-| TypeScript / JavaScript | `typescript-language-server` | `.ts`, `.mts`, `.cts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` |
-| Python | `pyright-langserver` | `.py`, `.pyi` |
-| Rust | `rust-analyzer` | `.rs` |
-| Go | `gopls` | `.go` |
-| C / C++ | `clangd` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` |
-| Bash | `bash-language-server` | `.sh`, `.bash`, `.zsh`, `.ksh` (Bash grammar) |
-| HTML | `vscode-html-language-server` | `.html`, `.htm`, `.xhtml` |
-| SQL | `sql-language-server` | `.sql` |
-| Ruby | `ruby-lsp` | `.rb`, `.gemspec` |
-| Java | `jdtls` | `.java` |
-| Kotlin | `kotlin-lsp` | `.kt`, `.kts` |
-| R | `R` with the `languageserver` package | `.r` |
-| LaTeX / BibTeX | `texlab` | `.tex`, `.sty`, `.cls` |
+| Language | Default LSP command | LSP file extensions | AST file extensions | AST search operations |
+|---|---|---|---|---|
+| TypeScript / JavaScript | `typescript-language-server` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs` | Outline, imports, exports, calls |
+| Python | `pyright-langserver` | `.py`, `.pyi` | `.py`, `.pyi` | Outline, calls |
+| Rust | `rust-analyzer` | `.rs` | `.rs` | Outline, calls |
+| Go | `gopls` | `.go`, `.mod` | `.go` | Outline, calls |
+| C / C++ | `clangd` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | Outline, calls |
+| Bash / shell | `bash-language-server` | `.sh`, `.bash`, `.zsh`, `.ksh` | `.sh`, `.bash`, `.zsh`, `.ksh` | Outline, calls |
+| HTML | `vscode-html-language-server` | `.html`, `.htm`, `.xhtml` | `.html`, `.htm`, `.xhtml` | Outline |
+| SQL | `sql-language-server` | `.sql` | `.sql` | Outline |
+| Ruby | `ruby-lsp` | `.rb`, `.erb`, `.gemspec` | `.rb`, `.gemspec` | Outline, calls |
+| Java | `jdtls` | `.java` | `.java` | Outline, calls |
+| Kotlin | `kotlin-lsp` | `.kt`, `.kts` | `.kt`, `.kts` | Outline, calls |
+| R | `R` with the `languageserver` package | `.r` | `.r` | Outline, calls |
+| LaTeX / BibTeX | `texlab` | `.tex`, `.bib` | `.tex`, `.sty`, `.cls` | Outline, imports |
 
-Texlab routes `.tex` and `.bib` files. The bundled Tree-sitter grammar parses `.tex`, `.sty`, and `.cls`, but it does not parse `.bib`. LaTeX AST search supports outlines and imports for packages, classes, source files, and bibliographies. It does not support export searches, callee queries, or call-site analysis. AST import searches also support JavaScript, TypeScript, and TSX. Export searches support only those languages. Other AST operations depend on each grammar's extractors. Structural queries work without an LSP server. Semantic targets and related operations need a running server.
+The AST operation column applies only to the AST extensions in that row:
+
+- **Outline** supplies `code_find` kind `definition`. Kinds `type`, `interface`, `class`, `method`, and `enum` filter the extracted outline kinds; not every language produces every kind. HTML outlines contain elements with non-empty `id` attributes. SQL outlines contain supported `CREATE` declarations and shallow table/type members.
+- **Imports / exports** supply kinds `import` / `export`. JavaScript-family imports use `import` statements; exports use file-level `export` statements. CommonJS `require()` and `module.exports` are not collected as imports or exports. LaTeX imports include package, class, source, and bibliography directives.
+- **Calls** supplies kind `call` and structural callee analysis. These are written call expressions, not symbol-identity relationships. HTML, SQL, and LaTeX have no built-in call-site or callee queries.
+- `.mod`, `.erb`, and `.bib` have built-in LSP routes but no AST grammar. `.sty` and `.cls` have AST support but no built-in LSP route. `.h` selects the C grammar; `.jsx` selects JavaScript; `.tsx` selects TSX. Shell extensions all select the Bash grammar, not separate Zsh or KornShell grammars.
+
+AST search and point syntax inspection can work without LSP. New target handles require semantic readiness, including handles used for `code_graph` callee queries. Workspace and directory inventories can include any file type; inclusion does not establish language support.
+
+Unlisted extensions have no built-in route or grammar. A [custom LSP server](../supi-lsp/README.md#custom-server-configuration) can add semantic coverage, but it does not add AST support. See the [AST operation matrix](../supi-tree-sitter/README.md#language-support-matrix) and [LSP route matrix](../supi-lsp/README.md#built-in-route-matrix) for details. The source definitions are the [LSP defaults](../supi-lsp/src/config/defaults.json), [grammar map](../supi-tree-sitter/src/language.ts), [AST operation registry](../supi-tree-sitter/src/operation-support.ts), and [search-kind mapping](src/analysis/search/pattern.ts).
 
 ### Search and output limits
 

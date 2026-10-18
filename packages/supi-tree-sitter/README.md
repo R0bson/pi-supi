@@ -38,27 +38,57 @@ It does **not** register pi tools or commands on its own.
 
 Coordinates in the library APIs use **1-based** line and character columns. Character positions use UTF-16 code units. Relative paths resolve from the session cwd, and a leading `@` on file paths is stripped.
 
-## Supported file families
+## Language support matrix
 
-- JavaScript / TypeScript (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`)
-- Python (`.py`, `.pyi`)
-- Rust (`.rs`)
-- Go (`.go`)
-- C / C++ (`.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++`)
-- Java (`.java`)
-- Kotlin (`.kt`, `.kts`)
-- Ruby (`.rb`, `.gemspec`)
-- Bash / shell (`.sh`, `.bash`, `.zsh`, `.ksh`)
-- HTML (`.html`, `.htm`, `.xhtml`)
-- R (`.r`)
-- SQL (`.sql`)
-- LaTeX (`.tex`, `.sty`, `.cls`)
+The package bundles 16 grammars for 38 file extensions. All listed extensions support parsing, point-node inspection, and custom Tree-sitter queries without an LSP server. Grammar selection uses the file extension without case sensitivity, not a shebang.
 
-Outline collection supports every listed family. HTML outlines list elements with a non-empty `id` attribute. SQL outlines list `CREATE` declarations and their first-level table and type members. LaTeX outlines list section headings and command, environment, label, acronym, glossary-entry, and color definitions.
+**Yes** means that a built-in extractor or query exists. **No** means that the operation is not implemented for that grammar. Parser support does not guarantee complete extraction of every language construct.
 
-Import collection supports JavaScript, TypeScript, TSX, and LaTeX. LaTeX imports include package, class, source, and bibliography directives. Export collection supports JavaScript, TypeScript, and TSX only. Call-site collection supports every listed family except HTML, SQL, and LaTeX. LaTeX does not support export collection, callee queries, or call-site collection. The LaTeX grammar does not parse `.bib` files.
+| Language / grammar | File extensions | Outline | Imports | Exports | Call sites / callees |
+|---|---|---|---|---|---|
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | Yes | Yes | Yes | Yes |
+| TypeScript | `.ts`, `.mts`, `.cts` | Yes | Yes | Yes | Yes |
+| TSX | `.tsx` | Yes | Yes | Yes | Yes |
+| Python | `.py`, `.pyi` | Yes | No | No | Yes |
+| Rust | `.rs` | Yes | No | No | Yes |
+| Go | `.go` | Yes | No | No | Yes |
+| C | `.c`, `.h` | Yes | No | No | Yes |
+| C++ | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | Yes | No | No | Yes |
+| Java | `.java` | Yes | No | No | Yes |
+| Kotlin | `.kt`, `.kts` | Yes | No | No | Yes |
+| Ruby | `.rb`, `.gemspec` | Yes | No | No | Yes |
+| Bash | `.sh`, `.bash`, `.zsh`, `.ksh` | Yes | No | No | Yes |
+| HTML | `.html`, `.htm`, `.xhtml` | Yes | No | No | No |
+| R | `.r` | Yes | No | No | Yes |
+| SQL | `.sql` | Yes | No | No | No |
+| LaTeX | `.tex`, `.sty`, `.cls` | Yes | Yes | No | No |
 
-The Go and Ruby grammars do not parse Go module manifests or ERB templates. `supi-lsp` still handles them semantically. For a bulk scan, use `getStructuralSearchSupportedExtensions(operation)`. Parser support does not mean that each operation is supported.
+For a bulk scan, use `getStructuralSearchSupportedExtensions(operation)`. It returns operation-specific extensions: 38 for `outline`, 11 for `imports`, 8 for `exports`, and 31 for `call-sites`. It does not accept `callees` or public search-kind names.
+
+### Mapping to Code Intelligence search
+
+[`code_find` in AST mode](../supi-code-intelligence/README.md#language-support) uses these library operations:
+
+| `code_find` kind | Structural operation | Match source |
+|---|---|---|
+| `definition` | `outline` | Extracted declaration names |
+| `type`, `interface`, `class`, `method`, `enum` | `outline` | Declaration names filtered by outline kind |
+| `import` | `imports` | Module specifiers or LaTeX dependency paths/names |
+| `export` | `exports` | Exported names |
+| `call` | `call-sites` | Written call names, not symbol identity |
+
+The `type` filter accepts `class`, `interface`, `type`, `enum`, `struct`, `union`, `record`, `object`, and `concept`. The other kind filters require an exact outline kind. Not every grammar produces every kind. For example, Rust traits use `interface`, Go structs use `struct`, and Java records use `record`; these do not become `class` results.
+
+### Extraction limits
+
+- Outlines are shallow: top-level declarations and supported members, not every local declaration inside function bodies. HTML outlines list only elements with non-empty `id` attributes. SQL outlines list supported `CREATE` declarations and first-level table/type members. LaTeX outlines list section headings and selected command, environment, label, acronym, glossary-entry, and color definitions.
+- JavaScript-family imports collect `import` statements, not CommonJS `require()` calls. Exports collect file-level `export` statements, including TypeScript `export =`; they do not collect `module.exports` assignments or nested namespace exports. An eligible `.cjs` file can therefore return no imports or exports.
+- LaTeX imports include package, class, source, and bibliography directives. Bibliography directives can refer to `.bib` files, but the grammar does not parse those files.
+- Call-site and callee queries use syntax, not resolved symbol identity. JSX tags are not call expressions. Library callee queries work without LSP, but new `code_graph` targets require semantic readiness in Code Intelligence.
+- `.jsx` uses JavaScript; `.tsx` uses the separate TSX grammar. `.h` uses C, not C++. `.zsh` and `.ksh` use Bash; this is not complete support for those shell dialects.
+- Go module manifests (`.mod`), Ruby ERB templates (`.erb`), and BibTeX (`.bib`) have [built-in LSP routes](../supi-lsp/README.md#built-in-route-matrix), but no AST grammar. Unlisted extensions, including JSON, YAML, TOML, and CSS, have no grammar. Custom LSP configuration does not add one.
+
+Sources: [extension and grammar map](src/language.ts), [operation support](src/operation-support.ts), [call-site queries](src/tool/call-sites.ts), [callee queries](src/tool/callees.ts), and [Code Intelligence kind filters](../supi-code-intelligence/src/analysis/search/pattern-analysis.ts). Regression tests cover [grammar mappings](__tests__/language.test.ts), [operation eligibility](__tests__/operation-support.test.ts), and [call-site queries](__tests__/call-site-languages.test.ts).
 
 ## Architecture
 

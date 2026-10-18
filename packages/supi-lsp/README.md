@@ -20,7 +20,53 @@ npm install @mrclrchtr/supi-lsp
 
 ## Language-server support
 
-The runtime starts an installed server when the project contains a matching file type and, where configured, a root marker. Some built-in servers use extension-based discovery without a root marker. Built-in command names must be on `PATH`; a configured absolute command path is also supported. This table describes diagnostic support, not the full semantic feature set. A push server can still provide hover, definitions, references, symbols, and refactors.
+SuPi provides 13 built-in server definitions. All are enabled unless `lsp.servers.<key>.enabled` is `false`. Install the language servers yourself; SuPi does not download or install them. Built-in commands must be on `PATH`; a configured absolute command path is also supported. Code Intelligence starts the runtime only for trusted projects.
+
+### Built-in route matrix
+
+This matrix describes the default routing configuration, not a live test or a guarantee of every semantic feature. File suffixes are matched without case sensitivity. The configuration stores `fileTypes` without the leading dot.
+
+| Language / config key | Default command and arguments | File extensions | Root markers for automatic discovery |
+|---|---|---|---|
+| TypeScript / JavaScript — `typescript` | `typescript-language-server --stdio` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs` | `tsconfig.json`, `jsconfig.json`, `package.json` |
+| Python — `python` | `pyright-langserver --stdio` | `.py`, `.pyi` | `pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`, `pyrightconfig.json` |
+| Rust — `rust` | `rust-analyzer` | `.rs` | `Cargo.toml` |
+| Go — `go` | `gopls serve` | `.go`, `.mod` | `go.mod`, `go.sum` |
+| C / C++ — `c` | `clangd --background-index` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | `compile_commands.json`, `CMakeLists.txt`, `.clangd`, `Makefile` |
+| Ruby — `ruby` | `ruby-lsp` | `.rb`, `.erb`, `.gemspec` | `Gemfile`, `.ruby-version` |
+| Java — `java` | `jdtls` | `.java` | `pom.xml`, `build.gradle` |
+| Kotlin — `kotlin` | `kotlin-lsp --stdio` | `.kt`, `.kts` | `build.gradle.kts`, `pom.xml` |
+| Bash / shell — `bash` | `bash-language-server start` | `.sh`, `.bash`, `.zsh`, `.ksh` | None; matching-file scan |
+| HTML — `html` | `vscode-html-language-server --stdio` | `.html`, `.htm`, `.xhtml` | `package.json` |
+| SQL — `sql` | `sql-language-server up --method stdio` | `.sql` | None; matching-file scan |
+| R — `r` | `R --slave -e 'languageserver::run()'` | `.r` | `DESCRIPTION`, `renv.lock`, `.Rprofile` |
+| LaTeX / BibTeX — `latex` | `texlab` | `.tex`, `.bib` | None; matching-file scan |
+
+- Automatic discovery checks installed commands, then root markers or matching files for routes without markers. A marker can detect a route without a matching source file. Exact file requests can start compatible routes lazily. Automatic path exclusions still apply to discovery.
+- `cpp` is a configuration alias for `c`, not a separate server. R also requires the R `languageserver` package. Each route has one default command; SuPi does not try alternative server binaries.
+- Root markers are not file routes. For example, `go.sum` can identify a Go project, but `.sum` and `.work` are not built-in Go file types.
+- `.mod`, `.erb`, and `.bib` have LSP routes but no bundled AST grammar. The built-in Texlab route excludes `.sty` and `.cls`, although [Tree-sitter supports them](../supi-tree-sitter/README.md#language-support-matrix). Texlab document IDs are `latex` for `.tex` and `bibtex` for `.bib`.
+- Unlisted file types have no built-in route. [Custom server configuration](#custom-server-configuration) can add routes or replace commands, arguments, file types, and root markers. This does not add AST support.
+
+Sources: [built-in definitions](src/config/defaults.json), [configuration and suffix matching](src/config/config.ts), and [automatic discovery](src/session/scanner.ts). Regression tests cover [configuration and representative routes](__tests__/unit/config.test.ts) and [discovery](__tests__/unit/scanner.test.ts).
+
+### Semantic feature limits
+
+A configured route is not a ready server. Features depend on the active server, its project state, and its negotiated capabilities. Use `code_health` or `/supi-ci-status` from Code Intelligence to inspect the current state.
+
+| Feature | SuPi support and requirement |
+|---|---|
+| Hover, definitions, references, implementations, document/workspace symbols | Supported through the server's corresponding LSP methods; availability and coverage differ by server. |
+| Diagnostics | Native pull, the eligible TypeScript request adapter, or ambient push. Push observation alone cannot confirm that a file is clean. See the diagnostic policy below. |
+| `rename_symbol` | Requires server rename support and validated text edits; uses `prepareRename` when advertised. |
+| `update_imports` / `delete_dead_code` | Requires matching `source.organizeImports` / `source.removeUnused` code actions that produce validated text edits. |
+| `extract_function` / `extract_variable` | Unavailable for all languages: standard LSP code actions do not provide a safe exact extraction-name contract. |
+
+The [operation-support model](src/config/operation-support.ts) separates server advertisement from SuPi planning limits. A server can advertise an action that SuPi cannot safely turn into a plan.
+
+### Historical diagnostic audit
+
+The following table describes diagnostic support, not the full semantic feature set. A push server can still provide hover, definitions, references, symbols, and refactors.
 
 The table is a historical initialize-handshake audit performed on 2026-08-21 against the locally installed server versions. It is not a current retest. The TypeScript row also records a separate issue 407 adapter verification on 2026-09-13. That verification did not retest the other server binaries; their audit versions and statuses remain historical. The handshake is authoritative and can report a different mode after an upgrade; treat rows marked `unverified` as unknown until a probe confirms them. Pull-capability facts come from the official LSP specification (pull diagnostics are a 3.17 feature; 3.18 is the current specification at microsoft.github.io/language-server-protocol/specifications/lsp/3.18/specification).
 
