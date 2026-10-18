@@ -3,6 +3,18 @@ import type { EvidenceListMetadata } from "../../analysis/evidence.ts";
 import type { CodeIntelResult, ToolDisplaySection } from "../../types/index.ts";
 import { assembledNextQueries, assembleToolResult } from "./assembly.ts";
 
+/** Keep the failure reason and suggest same-session recovery for a scoped symbol query. */
+export function scopedSymbolFailureMessage(reason: string): string {
+  return [
+    reason,
+    "",
+    "Next steps:",
+    "- If a source file in this scope is known, use `code_resolve` with `target.file`. This can start a missing LSP route and return declaration handles.",
+    "- If the file is unknown, use `bash` to locate a source file in the requested scope first.",
+    "- Use a returned handle directly, or retry the scoped symbol query. Opening one file does not confirm that the full workspace index is ready.",
+  ].join("\n");
+}
+
 /** Full failure or candidate-selection result for search-family tools. */
 export function searchErrorResult(
   content: string,

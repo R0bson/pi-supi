@@ -4,7 +4,7 @@ import {
   createPartialEvidenceList,
   type EvidenceListMetadata,
 } from "../../analysis/evidence.ts";
-import type { FindWorkflowOutcome } from "../../session/find-types.ts";
+import type { FindMode, FindWorkflowOutcome } from "../../session/find-types.ts";
 import {
   assembledNextQueries,
   assembleToolResult,
@@ -155,7 +155,7 @@ function findProvenance(
 }
 
 import type { CodeIntelResult, CodeIntelToolExecCtx } from "../../types/index.ts";
-import { searchErrorResult } from "../result/errors.ts";
+import { scopedSymbolFailureMessage, searchErrorResult } from "../result/errors.ts";
 import { renderFindResult } from "./render.ts";
 
 type FindOutcome = Awaited<ReturnType<CodeIntelToolExecCtx["session"]["find"]>>;
@@ -164,8 +164,15 @@ type FindOutcome = Awaited<ReturnType<CodeIntelToolExecCtx["session"]["find"]>>;
 export function finishFindResult(
   outcome: FindOutcome,
   scope: readonly string[] | undefined,
+  mode?: FindMode,
 ): CodeIntelResult {
-  if (outcome.kind === "unavailable") throw new Error(outcome.reason);
+  if (outcome.kind === "unavailable") {
+    const reason =
+      mode === "semantic" && scope?.length
+        ? scopedSymbolFailureMessage(outcome.reason)
+        : outcome.reason;
+    throw new Error(reason);
+  }
   if (outcome.kind === "invalid-input") {
     return searchErrorResult(`**Error:** ${outcome.message}`, {
       scope: Array.isArray(scope) ? scope.join(", ") : null,

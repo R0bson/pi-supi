@@ -15,5 +15,5 @@ export async function executeResolveTool(
   ctx: CodeIntelToolExecCtx,
 ): Promise<CodeIntelResult> {
   const outcome = await ctx.session.resolve(params, toWorkflowControl(ctx));
-  return finishResolveResult(outcome, ctx.cwd);
+  return finishResolveResult(outcome, ctx.cwd, params.target);
 }

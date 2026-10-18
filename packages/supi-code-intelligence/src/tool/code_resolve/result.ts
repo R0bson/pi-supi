@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import type { ConfidenceMode } from "@mrclrchtr/supi-code-runtime/api";
 import type { EvidenceListMetadata } from "../../analysis/evidence.ts";
 import { createEvidenceList } from "../../analysis/evidence.ts";
+import type { ResolveTargetInput } from "../../session/target-input.ts";
 import type { TargetStoreEntry } from "../../session/target-store.ts";
 import type { TargetWorkflowOutcome } from "../../session/target-workflow.ts";
 import {
@@ -12,6 +13,7 @@ import {
 } from "../result/assembly.ts";
 import { formatCandidateRow } from "../result/candidate-row.ts";
 import { createToolDisplaySection } from "../result/display.ts";
+import { scopedSymbolFailureMessage } from "../result/errors.ts";
 import type { ResolveDetails, ToolDisplaySection } from "../result/types.ts";
 
 /** Presentation-neutral assembled code_resolve result. */
@@ -298,9 +300,17 @@ import { renderResolveResult } from "./markdown.ts";
 type ResolveOutcome = Awaited<ReturnType<CodeIntelToolExecCtx["session"]["resolve"]>>;
 
 /** Assemble the final model-visible code_resolve result for one workflow outcome. */
-export function finishResolveResult(outcome: ResolveOutcome, cwd: string): CodeIntelResult {
+export function finishResolveResult(
+  outcome: ResolveOutcome,
+  cwd: string,
+  target?: ResolveTargetInput,
+): CodeIntelResult {
   if (outcome.kind === "unavailable") {
-    throw new Error(outcome.reason);
+    const reason =
+      target && "symbol" in target && target.symbol.scope
+        ? scopedSymbolFailureMessage(outcome.reason)
+        : outcome.reason;
+    throw new Error(reason);
   }
 
   const assembly = assembleResolveResult(outcome, cwd);
