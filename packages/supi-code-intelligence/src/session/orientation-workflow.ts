@@ -135,6 +135,7 @@ async function orientTarget(options: {
           totalCount: target.totalCount,
           omittedCount: target.omittedCount,
           partialReason: target.partialReason,
+          partialMessage: target.partialMessage,
         }
       : {
           kind: "disambiguation",
@@ -142,6 +143,7 @@ async function orientTarget(options: {
           totalCount: target.totalCount,
           omittedCount: target.omittedCount,
           partialReason: target.partialReason,
+          partialMessage: target.partialMessage,
         };
   }
   if (target.kind !== "resolved") return target;

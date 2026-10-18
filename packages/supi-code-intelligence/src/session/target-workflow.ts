@@ -320,6 +320,7 @@ function toWorkflowOutcome(
         totalCount: outcome.totalCount,
         omittedCount: outcome.omittedCount,
         partialReason: outcome.partialReason,
+        partialMessage: outcome.partialMessage,
       }
     : {
         kind: "disambiguation",
@@ -327,6 +328,7 @@ function toWorkflowOutcome(
         totalCount: outcome.totalCount,
         omittedCount: outcome.omittedCount,
         partialReason: outcome.partialReason,
+        partialMessage: outcome.partialMessage,
       };
 }
 

@@ -18,7 +18,7 @@ import {
   type ResultSection,
   type ToolResultAssembly,
 } from "../result/assembly.ts";
-import { formatCandidateRow } from "../result/candidate-row.ts";
+import { formatCandidateRow, formatPartialCandidateDisclosure } from "../result/candidate-row.ts";
 import { createToolDisplaySection } from "../result/display.ts";
 import type {
   ContextDetails,
@@ -61,6 +61,7 @@ export function orientationCandidateDisplaySections(
       totalCount: evidence.totalCount,
       omittedCount: evidence.omittedCount,
       partialReason: evidence.partialReason,
+      partialMessage: evidence.partialMessage,
       format: (candidate) => formatCandidateRow(candidate, "rank-first"),
     }),
   ];
@@ -207,7 +208,7 @@ export function finishOrientationResult(outcome: OrientationOutcome): CodeIntelR
     });
   }
   if (outcome.kind === "disambiguation" || outcome.kind === "kind-mismatch") {
-    const candidates = outcome.candidates ?? [];
+    const candidates = outcome.candidates;
     const lines = [
       outcome.kind === "kind-mismatch"
         ? `# No Orientation target matched provider kind \`${outcome.requestedKind}\``
@@ -225,8 +226,10 @@ export function finishOrientationResult(outcome: OrientationOutcome): CodeIntelR
       shownCount: candidates.length,
       omittedCount: outcome.omittedCount,
       partialReason: outcome.partialReason,
+      partialMessage: outcome.partialMessage,
     };
-    const disclosure = renderEvidenceListMetadataDisclosure(evidence);
+    const disclosure =
+      formatPartialCandidateDisclosure(evidence) ?? renderEvidenceListMetadataDisclosure(evidence);
     if (disclosure) lines.push("", disclosure);
     const nextQueries =
       outcome.kind === "kind-mismatch"

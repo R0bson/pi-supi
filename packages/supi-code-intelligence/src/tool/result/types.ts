@@ -41,6 +41,8 @@ export interface ToolDisplaySection {
   totalCount: number | null;
   omittedCount: number | null;
   partialReason: string | null;
+  /** Provider explanation for incomplete collection, when available. */
+  partialMessage?: string;
 }
 
 // ── Anchored coordinate resolution metadata ───────────────────────────

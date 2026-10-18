@@ -1,3 +1,5 @@
+import type { EvidenceListMetadata } from "../../analysis/evidence.ts";
+
 /** Candidate fields used by the three target-selection row formats. */
 export interface CandidateRowData {
   readonly targetId: string;
@@ -24,4 +26,24 @@ export function formatCandidateRow(
   }
   const rank = candidate.rank && candidate.rank > 0 ? candidate.rank : fallbackRank;
   return `${rank}. ${candidate.name} (${kind}) — ${candidate.file}:${candidate.line}:${candidate.character} [${candidate.targetId}]`;
+}
+
+/** Separate display omissions from incomplete provider collection in candidate output. */
+export function formatPartialCandidateDisclosure(
+  evidence: Pick<
+    EvidenceListMetadata,
+    "shownCount" | "totalCount" | "omittedCount" | "partialMessage"
+  >,
+): string | null {
+  if (evidence.totalCount !== null || !evidence.partialMessage) return null;
+  const { shownCount, omittedCount, partialMessage } = evidence;
+  const collectedCount = shownCount + (omittedCount ?? 0);
+  const noun = collectedCount === 1 ? "candidate" : "candidates";
+  const count =
+    omittedCount === null
+      ? `${shownCount} collected ${noun}.`
+      : omittedCount === 0
+        ? `all ${shownCount} collected ${noun}.`
+        : `${shownCount} of ${collectedCount} collected ${noun}; ${omittedCount} omitted.`;
+  return `Showing ${count}\nSearch completeness is unknown: ${partialMessage}`;
 }

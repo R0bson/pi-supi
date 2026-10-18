@@ -1,10 +1,14 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { completedCodeQuery, partialCodeQuery } from "@mrclrchtr/supi-code-runtime/api";
 import { createPiMock, getTool, makeCtx } from "@mrclrchtr/supi-test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import codeIntelligenceExtension from "../../../src/extension.ts";
+import { renderOrientationResult } from "../../../src/tool/code_orientation/tui.ts";
+import { renderResolveResult } from "../../../src/tool/code_resolve/tui.ts";
+import type { ToolResult } from "../../../src/ui/tui/common.ts";
 import { clearMockRuntime, registerMockProvider } from "../../helpers/register-mock-runtime.ts";
 
 const mockLspFns = vi.hoisted(() => ({
@@ -30,6 +34,13 @@ interface PublicResult {
     displaySections?: Array<Record<string, unknown>>;
   };
 }
+
+const theme = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+} as never;
+
+beforeAll(() => initTheme("dark"));
 
 let cwd: string;
 let homeDir: string;
@@ -91,21 +102,29 @@ function resultText(result: PublicResult): string {
 }
 
 describe("public target candidate completeness", () => {
-  it("keeps provider-limited totals and only exposes visible handles in resolve and Orientation", async () => {
+  it.each([
+    {
+      maxResults: 1,
+      shownCount: 1,
+      omittedCount: 1,
+      count: "Showing 1 of 2 collected candidates; 1 omitted.",
+    },
+    { maxResults: 6, shownCount: 2, omittedCount: 0, count: "Showing all 2 collected candidates." },
+  ])("keeps the provider reason and display counts with maxResults=$maxResults", async (case_) => {
     registerLimitedProvider();
     const pi = createPiMock();
     codeIntelligenceExtension(pi as never, undefined, homeDir);
 
     const resolve = (await getTool(pi, "code_resolve").execute(
       "limited-resolve",
-      { target: { symbol: { query: "Widget" } }, maxResults: 1 },
+      { target: { symbol: { query: "Widget" } }, maxResults: case_.maxResults },
       undefined,
       undefined,
       makeCtx({ cwd }),
     )) as PublicResult;
     const orientation = (await getTool(pi, "code_orientation").execute(
       "limited-orientation",
-      { focus: { target: { symbol: { query: "Widget" } } }, maxResults: 1 },
+      { focus: { target: { symbol: { query: "Widget" } } }, maxResults: case_.maxResults },
       undefined,
       undefined,
       makeCtx({ cwd }),
@@ -113,36 +132,34 @@ describe("public target candidate completeness", () => {
 
     const expected = {
       totalCount: null,
-      shownCount: 1,
-      omittedCount: 1,
+      shownCount: case_.shownCount,
+      omittedCount: case_.omittedCount,
       partialReason: "provider-limited",
+      partialMessage: "one workspace-symbol route failed",
     };
-    expect(resolve.details?.data?.evidenceLists).toContainEqual(
-      expect.objectContaining({ key: "resolve.candidates", ...expected }),
-    );
-    expect(resolve.details?.displaySections).toContainEqual(
-      expect.objectContaining({ key: "resolve.candidates", ...expected }),
-    );
-    expect(resolve.details?.data?.candidates).toHaveLength(1);
     expect(resolve.details?.data?.targetCount).toBe(2);
-    expect(resultText(resolve)).toContain(
-      "showing 1; 1 collected omitted; more may exist — provider-limited",
-    );
-    expect(resultText(resolve)).not.toContain("of 2");
-    expect(resultText(resolve)).not.toContain("src/b.ts");
-
-    expect(orientation.details?.data?.evidenceLists).toContainEqual(
-      expect.objectContaining({ key: "orientation.candidates", ...expected }),
-    );
-    expect(orientation.details?.displaySections).toContainEqual(
-      expect.objectContaining({ key: "orientation.candidates", ...expected }),
-    );
-    expect(orientation.details?.data?.candidates).toHaveLength(1);
-    expect(resultText(orientation)).toContain(
-      "showing 1; 1 collected omitted; more may exist — provider-limited",
-    );
-    expect(resultText(orientation)).not.toContain("of 2");
-    expect(resultText(orientation)).not.toContain("src/b.ts");
+    for (const { key, result, render } of [
+      { key: "resolve.candidates", result: resolve, render: renderResolveResult },
+      { key: "orientation.candidates", result: orientation, render: renderOrientationResult },
+    ]) {
+      expect(result.details?.data?.evidenceLists).toContainEqual(
+        expect.objectContaining({ key, ...expected }),
+      );
+      expect(result.details?.displaySections).toContainEqual(
+        expect.objectContaining({ key, ...expected }),
+      );
+      expect(result.details?.data?.candidates).toHaveLength(case_.shownCount);
+      const transcript = [false, true].map((expanded) =>
+        render(result as ToolResult, { expanded, isPartial: false }, theme, undefined)
+          .render(200)
+          .join("\n"),
+      );
+      for (const text of [resultText(result), ...transcript]) {
+        expect(text).toContain(case_.count);
+        expect(text).toContain("Search completeness is unknown: one workspace-symbol route failed");
+        if (case_.maxResults === 1) expect(text).not.toContain("src/b.ts");
+      }
+    }
   });
 
   it.each([

@@ -3,6 +3,7 @@
 import { relative } from "node:path";
 import { renderEvidenceListMetadataDisclosure } from "../../analysis/evidence.ts";
 import type { TargetStoreEntry } from "../../session/target-store.ts";
+import { formatPartialCandidateDisclosure } from "../result/candidate-row.ts";
 import type { ResolveDetails } from "../result/types.ts";
 import type { ResolveResultAssembly } from "./result.ts";
 
@@ -155,6 +156,8 @@ function appendCandidates(lines: string[], details: ResolveDetails): void {
 
 function appendDisclosure(lines: string[], details: ResolveDetails): void {
   const evidence = details.evidenceLists?.[0];
-  const disclosure = evidence ? renderEvidenceListMetadataDisclosure(evidence) : null;
+  const disclosure = evidence
+    ? (formatPartialCandidateDisclosure(evidence) ?? renderEvidenceListMetadataDisclosure(evidence))
+    : null;
   if (disclosure) lines.push("", disclosure);
 }

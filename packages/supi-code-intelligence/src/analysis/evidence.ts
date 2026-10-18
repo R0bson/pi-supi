@@ -27,6 +27,8 @@ export interface EvidenceListMetadata {
   /** Known collected atoms hidden by presentation; null when not tracked. */
   omittedCount: number | null;
   partialReason: EvidencePartialReason | null;
+  /** Provider explanation for incomplete collection, when available. */
+  partialMessage?: string;
   /** Unusable semantic-provider locations excluded from valid evidence totals. */
   invalidLocationCount?: number;
 }

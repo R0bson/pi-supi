@@ -19,7 +19,7 @@ import {
   type ResultProvenance,
   type ToolResultAssembly,
 } from "../result/assembly.ts";
-import { formatCandidateRow } from "../result/candidate-row.ts";
+import { formatCandidateRow, formatPartialCandidateDisclosure } from "../result/candidate-row.ts";
 import { createToolDisplaySection } from "../result/display.ts";
 import type { ToolDisplaySection } from "../result/types.ts";
 import type { GraphDetails, GraphFileGroup, GraphSectionDetails } from "./details.ts";
@@ -280,7 +280,10 @@ function finishGraphCandidates(
     );
   }
   const evidence = graphCandidateEvidence(outcome);
-  lines.push("", formatGraphEvidence(evidence, "candidates"));
+  lines.push(
+    "",
+    formatPartialCandidateDisclosure(evidence) ?? formatGraphEvidence(evidence, "candidates"),
+  );
   if (outcome.kind === "kind-mismatch") {
     lines.push(
       "",
@@ -295,6 +298,7 @@ function finishGraphCandidates(
       totalCount: evidence.totalCount,
       omittedCount: evidence.omittedCount,
       partialReason: evidence.partialReason,
+      partialMessage: evidence.partialMessage,
       format: (candidate) => formatCandidateRow(candidate, "handle-first"),
     }),
   ];
@@ -323,6 +327,7 @@ function graphCandidateEvidence(
     shownCount: outcome.candidates.length,
     omittedCount: outcome.omittedCount,
     partialReason: outcome.partialReason,
+    partialMessage: outcome.partialMessage,
   };
 }
 

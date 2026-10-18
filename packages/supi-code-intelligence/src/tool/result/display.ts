@@ -15,6 +15,8 @@ export interface ToolDisplaySectionInput<T> {
   totalCount?: number | null;
   omittedCount?: number | null;
   partialReason?: string | null;
+  /** Provider explanation for incomplete collection, when available. */
+  partialMessage?: string;
   maxItems?: number;
 }
 
@@ -42,6 +44,7 @@ export function createToolDisplaySection<T>(input: ToolDisplaySectionInput<T>): 
     totalCount,
     omittedCount,
     partialReason: input.partialReason ?? null,
+    ...(input.partialMessage === undefined ? {} : { partialMessage: input.partialMessage }),
   };
 }
 
@@ -89,6 +92,9 @@ export function readToolDisplaySections(value: unknown): ToolDisplaySection[] {
         totalCount: record.totalCount,
         omittedCount: record.omittedCount,
         partialReason: record.partialReason,
+        ...(typeof record.partialMessage === "string"
+          ? { partialMessage: record.partialMessage }
+          : {}),
       },
     ];
   });

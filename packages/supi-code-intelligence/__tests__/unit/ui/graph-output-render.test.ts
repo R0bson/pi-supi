@@ -183,10 +183,12 @@ describe("code_graph human output", () => {
       totalCount: null,
       omittedCount: 1,
       partialReason: "provider-limited",
+      partialMessage: "one workspace-symbol route failed",
     });
     for (const text of [result.content, render(result, false), render(result, true)]) {
-      expect(text).toContain("1 collected omitted; more may exist — provider-limited");
-      expect(text.match(/collected omitted/g)).toHaveLength(1);
+      expect(text).toContain("Showing 1 of 2 collected candidates; 1 omitted.");
+      expect(text).toContain("Search completeness is unknown: one workspace-symbol route failed");
+      expect(text.match(/1 omitted/g)).toHaveLength(1);
       expect(text).not.toContain("other.ts");
     }
   });

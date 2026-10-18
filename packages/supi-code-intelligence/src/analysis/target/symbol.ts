@@ -133,9 +133,9 @@ export async function resolveSymbolTarget(
   }
   if (result.data.length === 0) return emptySymbolOutcome(symbol, result, options?.path);
 
-  const scoped = result.data.filter((candidate) =>
-    scopePath ? isWithinOrEqual(scopePath, candidate.file) : true,
-  );
+  const scoped = result.data
+    .filter((candidate) => (scopePath ? isWithinOrEqual(scopePath, candidate.file) : true))
+    .sort((a, b) => Number(b.name === symbol) - Number(a.name === symbol));
   const eligible = options?.exportedOnly
     ? scoped.filter((candidate) => !NON_EXPORTED_KINDS.has(candidate.kind))
     : scoped;
@@ -187,9 +187,18 @@ function normalizeProviderKind(kind: string): string {
 }
 
 async function resolveCandidates(
-  options: CandidateOutcomeBase & Pick<TargetCandidateCompleteness, "totalCount" | "partialReason">,
+  options: CandidateOutcomeBase & Omit<TargetCandidateCompleteness, "omittedCount">,
 ): Promise<TargetOutcome> {
-  const { candidates, semantic, cwd, maxResults, control, totalCount, partialReason } = options;
+  const {
+    candidates,
+    semantic,
+    cwd,
+    maxResults,
+    control,
+    totalCount,
+    partialReason,
+    partialMessage,
+  } = options;
   const ranged = candidates.filter(
     (candidate) =>
       candidate.declarationAnchor.line > 0 || candidate.declarationAnchor.character > 0,
@@ -205,6 +214,7 @@ async function resolveCandidates(
     maxResults,
     totalCount,
     partialReason,
+    partialMessage,
     control,
   });
 }
@@ -241,14 +251,14 @@ interface CandidateOutcomeBase {
 function candidateCompleteness(
   result: Exclude<CodeQueryResult<CodeSymbol[]>, { kind: "unavailable" }>,
   totalCount: number,
-): Pick<TargetCandidateCompleteness, "totalCount" | "partialReason"> {
+): Omit<TargetCandidateCompleteness, "omittedCount"> {
   return result.kind === "partial"
-    ? { totalCount: null, partialReason: "provider-limited" }
+    ? { totalCount: null, partialReason: "provider-limited", partialMessage: result.reason }
     : { totalCount, partialReason: null };
 }
 
 type CandidateOutcomeOptions = CandidateOutcomeBase &
-  Pick<TargetCandidateCompleteness, "totalCount" | "partialReason"> &
+  Omit<TargetCandidateCompleteness, "omittedCount"> &
   (
     | { kind: "disambiguation"; requestedKind?: never }
     | { kind: "kind-mismatch"; requestedKind: TargetSymbolKind }
@@ -290,6 +300,7 @@ async function buildCandidateOutcome(
     totalCount: options.totalCount,
     omittedCount: Math.max(0, options.candidates.length - cap),
     partialReason: options.partialReason,
+    partialMessage: options.partialMessage,
   };
   return options.kind === "kind-mismatch"
     ? {

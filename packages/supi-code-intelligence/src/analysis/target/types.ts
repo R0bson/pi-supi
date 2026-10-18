@@ -144,6 +144,8 @@ export interface TargetCandidateCompleteness {
   omittedCount: number;
   /** Why the provider cannot establish an exact candidate total. */
   partialReason: "provider-limited" | null;
+  /** Provider explanation for incomplete discovery, when available. */
+  partialMessage?: string;
 }
 
 /**

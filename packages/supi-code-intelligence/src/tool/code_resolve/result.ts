@@ -162,6 +162,7 @@ function projectCandidateOutcome(
     shownCount: outcome.candidates.length,
     omittedCount: outcome.omittedCount,
     partialReason: outcome.partialReason,
+    partialMessage: outcome.partialMessage,
   };
   const collectedCount = evidence.shownCount + (evidence.omittedCount ?? 0);
   const mismatch = outcome.kind === "kind-mismatch";
@@ -267,6 +268,7 @@ function resolveDisplaySections(details: ResolveDetails): ToolDisplaySection[] {
         totalCount: evidence.totalCount,
         omittedCount: evidence.omittedCount,
         partialReason: evidence.partialReason,
+        partialMessage: evidence.partialMessage,
         format: (candidate) => formatCandidateRow(candidate, "rank-first"),
       }),
     ];

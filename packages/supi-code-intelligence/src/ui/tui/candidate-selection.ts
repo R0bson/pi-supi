@@ -1,13 +1,17 @@
 /** Shared human transcript renderer for target-candidate selections. */
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Container, Spacer, Text } from "@earendil-works/pi-tui";
-import { formatCandidateRow } from "../../tool/result/candidate-row.ts";
+import {
+  formatCandidateRow,
+  formatPartialCandidateDisclosure,
+} from "../../tool/result/candidate-row.ts";
 import {
   MAX_TUI_DISPLAY_ITEMS,
   readToolDisplaySections,
   truncateDisplayText,
 } from "../../tool/result/display.ts";
 import type { ToolDisplaySection } from "../../tool/result/types.ts";
+import { BoundedCandidateDisclosure } from "./candidate-disclosure.ts";
 import { createLegacyCandidateBody, readLegacyCandidateText } from "./candidate-legacy-body.ts";
 import {
   type EvidenceEntry,
@@ -144,6 +148,7 @@ function displayEvidence(display: ToolDisplaySection, key: CandidateSelectionKey
         ? unknownOmittedCount(display.omittedCount, Math.max(0, display.shownCount - shownCount))
         : Math.max(0, display.totalCount - shownCount),
     partialReason: display.partialReason,
+    partialMessage: display.partialMessage,
   };
 }
 
@@ -273,8 +278,15 @@ class CandidateSelectionComponent implements Component {
   invalidate(): void {}
 
   private renderCollapsed(container: Container, width: number): string[] {
-    const summary = this.selection.evidence ? formatEvidenceEntry(this.selection.evidence) : null;
-    if (summary) container.addChild(new Text(this.theme.fg("muted", summary), 0, 0));
+    const disclosure = this.selection.evidence
+      ? formatPartialCandidateDisclosure(this.selection.evidence)
+      : null;
+    if (disclosure) {
+      container.addChild(new BoundedCandidateDisclosure(disclosure, false, this.theme));
+    } else if (this.selection.evidence) {
+      const summary = formatEvidenceEntry(this.selection.evidence);
+      container.addChild(new Text(this.theme.fg("muted", summary), 0, 0));
+    }
     this.appendTruncation(container);
     return this.renderContainer(container, width);
   }
@@ -304,10 +316,17 @@ class CandidateSelectionComponent implements Component {
   private appendStructuredSelection(container: Container): void {
     container.addChild(new Spacer(1));
     const title = this.selection.display?.title ?? "Candidates";
-    const bounds = this.selection.evidence ? formatSectionBounds(this.selection.evidence) : "";
+    const disclosure = this.selection.evidence
+      ? formatPartialCandidateDisclosure(this.selection.evidence)
+      : null;
+    const bounds =
+      !disclosure && this.selection.evidence ? formatSectionBounds(this.selection.evidence) : "";
     container.addChild(
       new Text(this.theme.fg("dim", `${title}${bounds ? ` (${bounds})` : ""}`), 0, 0),
     );
+    if (disclosure) {
+      container.addChild(new BoundedCandidateDisclosure(disclosure, true, this.theme));
+    }
     for (const row of this.selection.rows) {
       container.addChild(new Text(this.theme.fg("muted", row), 0, 0));
     }
@@ -344,7 +363,7 @@ function formatSectionBounds(entry: EvidenceEntry): string {
 
 function unknownOmittedCount(base: number | null, additional: number): number | null {
   const omitted = (base ?? 0) + additional;
-  return omitted > 0 ? omitted : null;
+  return base !== null || omitted > 0 ? omitted : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

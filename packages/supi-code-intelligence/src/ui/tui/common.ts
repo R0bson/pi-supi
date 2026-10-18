@@ -79,6 +79,8 @@ export interface EvidenceEntry {
   totalCount: number | null;
   omittedCount: number | null;
   partialReason: string | null;
+  /** Provider explanation for incomplete collection, when available. */
+  partialMessage?: string;
   invalidLocationCount?: number;
 }
 
@@ -116,6 +118,7 @@ function readEvidenceEntry(value: unknown): EvidenceEntry | null {
     totalCount,
     omittedCount,
     partialReason,
+    ...(typeof record.partialMessage === "string" ? { partialMessage: record.partialMessage } : {}),
     ...(invalidLocationCount === undefined ? {} : { invalidLocationCount }),
   };
 }
