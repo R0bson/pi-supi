@@ -51,6 +51,8 @@ export interface CodeIntelResultDetails {
   message?: string;
   displaySections?: readonly ToolDisplaySection[];
   truncation?: ToolOutputTruncationDetails;
+  /** UI/debug-only soft-budget warning; never part of model content. */
+  budgetWarning?: import("../tool/code_orientation/workspace-output.ts").WorkspaceBudgetWarning;
 }
 
 /** Tool result shape returned by executeAction. */

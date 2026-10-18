@@ -2,7 +2,7 @@
 
 The hidden first-turn Code Intelligence overview is a parent-session surface under an explicit contract: a scoped `code-intelligence.overviewEnabled` setting defaults to `true`, the overview contains manifest facts — including one-line free-text descriptions — labeled as untrusted evidence, the full overview is always rendered with token-efficient formatting, and its soft-budget check emits only a debug event. Headless reviewer children never receive it; `code_orientation` remains the complete on-demand orientation surface.
 
-**Status:** Accepted.
+**Status:** Superseded by [Bounded workspace observations](0003-bounded-workspace-orientation.md). The scoped setting and headless isolation remain in effect.
 
 ## Context
 

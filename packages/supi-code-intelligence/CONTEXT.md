@@ -11,24 +11,36 @@ The set of agent-facing capabilities that help understand, navigate, search, and
 _Avoid_: code intel, IDE features
 
 **Workspace Overview**:
-An optional, bounded first-turn snapshot of manifest-declared package topology, one-line descriptions, entrypoints, and detected languages. It contains manifest facts as untrusted evidence and points to the Orientation surface when facts are omitted.
-_Avoid_: architecture overview, complete project context, trusted instructions
+An optional, bounded first-turn map of directly observed workspace facts that helps an agent select an Orientation focus. It works without package metadata and labels repository content as untrusted evidence, not instructions.
+_Avoid_: architecture overview, complete project context, trusted instructions, convention-based role guesses
 
 **Automatic code-intelligence exclusion**:
 A configured path rule that omits a path from automatic LSP work and broad AST searches. Explicit fixture inspection remains available; the rule is not an access restriction.
 _Avoid_: access denial, hidden source, LSP-only exclusion
 
 **Orientation surface**:
-The code-intelligence surface that helps an agent establish directly observed workspace, package, directory, file, or target facts before choosing more surgical tools.
-_Avoid_: context bundle, relation graph, treating orientation as target analysis
+The code-intelligence surface that gives an agent self-contained, directly observed facts about an Orientation focus before it selects a more precise tool. Essential context does not depend on a prior Workspace Overview or tool result.
+_Avoid_: context bundle, relation graph, treating orientation as target analysis, history-dependent fact suppression, convention-based role guesses
 
 **Orientation focus**:
 The project, package, directory, file, or symbol that an orientation surface is centered on. An absent focus means workspace-level orientation; a precise focus means symbol-centered orientation rather than relation analysis.
 _Avoid_: scope, path, target when referring to orientation selection
 
+**Orientation root**:
+The session working directory that bounds automatic collection for Workspace Overview and Orientation. Ancestor project declarations do not widen this root; an explicit Orientation focus is a separate request.
+_Avoid_: inferred repository root, automatic parent-workspace expansion, treating a parent manifest as permission to widen collection
+
 **Orientation evidence collector**:
-The session-internal module that materializes orientation evidence — context facts, or definitions, docs, local diagnostics, and substrate context for one Resolved target entry, which it consumes read-only. It emits presentation-neutral content atoms; document framing (headings, section notes) belongs to the markdown adapter. Position-strict substrate evidence is withheld for declaration-anchor targets per ADR 0003. Distinct from the public Orientation surface and from Tool result assembly.
+The session-internal module that materializes orientation evidence — context facts, or definitions, docs, local diagnostics, and substrate context for one Resolved target entry, which it consumes read-only. It emits presentation-neutral content atoms; document framing (headings, section notes) belongs to the markdown adapter. Position-strict substrate evidence is withheld for declaration-anchor targets per [the declaration-anchor decision](../../docs/adr/0003-code-symbol-name-declaration-anchors.md). Distinct from the public Orientation surface and from Tool result assembly.
 _Avoid_: brief generator, treating it as the public Orientation surface
+
+**Project declaration**:
+An identity or property explicitly established by parsed project metadata, with its source and native declaration kind retained. It does not establish workspace membership, source-file ownership, or relationships unless those facts are also declared. Workspace declarations retain their patterns and exclusions, including values that match no observed project.
+_Avoid_: inferred project role, treating every project declaration as a workspace member, inferred source root
+
+**Orientation snapshot**:
+A captured observation behind one Workspace Overview or Orientation result, including the evidence omitted by its display limit. Reading its complete result does not refresh the observation or establish facts outside its collected focus.
+_Avoid_: live workspace state, complete repository knowledge, treating an omitted row as uncollected evidence
 
 **Manifest-declared package topology**:
 The package membership and dependency declarations obtained from successfully parsed workspace configuration and package manifests. It is not a runtime architecture graph; every fact retains the establishing configuration or manifest field.

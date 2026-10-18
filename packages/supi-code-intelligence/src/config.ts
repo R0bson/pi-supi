@@ -18,9 +18,9 @@ const CODE_INTELLIGENCE_SECTION = "code-intelligence";
 export interface CodeIntelligenceConfig extends Record<string, unknown> {
   /** Ordered directory-local instruction file names to surface during directory orientation. */
   instructionFileNames: string[];
-  /** Inject the hidden first-turn workspace architecture overview when enabled. */
+  /** Inject the hidden first-turn workspace overview when enabled. */
   overviewEnabled: boolean;
-  /** Gitignore-style paths excluded from automatic LSP and broad AST work. */
+  /** Gitignore-style paths excluded from automatic navigation, LSP, and broad AST work. */
   exclude: string[];
 }
 
@@ -84,14 +84,14 @@ export function registerCodeIntelligenceSettings(pi: ExtensionAPI, homeDir?: str
         kind: "boolean" as const,
         key: "overviewEnabled",
         label: "Overview Enabled",
-        description: "Inject the hidden first-turn workspace architecture overview",
+        description: "Inject the hidden first-turn workspace overview",
       },
       {
         kind: "stringList" as const,
         key: "exclude",
         label: "Automatic Exclusions",
         description:
-          "Gitignore-style patterns for automatic LSP and broad AST work. Edit the project or global config, then reload or restart Pi; exact requests stay available.",
+          "Gitignore-style patterns for automatic navigation, LSP, and broad AST work. Reload or restart Pi for runtime scans; exact requests stay available.",
       },
     ],
     ...(homeDir ? { homeDir } : {}),

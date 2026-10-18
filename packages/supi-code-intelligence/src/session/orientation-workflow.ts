@@ -15,6 +15,7 @@ import { loadCodeIntelligenceConfig } from "../config.ts";
 import type { CapabilityAdapter } from "./capability-adapter.ts";
 import { parseOrientationWorkflowInput } from "./input/workflows.ts";
 import { executeOrientation } from "./orientation/collect.ts";
+import { orientWorkspaceContext } from "./orientation/workspace-context.ts";
 import type {
   OrientationFocusInput,
   OrientationItem,
@@ -31,7 +32,6 @@ export interface OrientationWorkflowDeps extends TargetWorkflowDeps {
   readonly capability: CapabilityAdapter;
   readonly nativeInstructionPaths: Set<string>;
   readonly surfacedInstructionDirs: Set<string>;
-  readonly markInstructionDirsSurfaced: (directories: string[]) => void;
   /** Whether the project is trusted — controls instruction-file discovery. */
   readonly projectTrusted: boolean;
   /** Global config home for hermetic config reads; undefined uses os.homedir(). */
@@ -47,12 +47,24 @@ export async function runOrientationWorkflow(
   const parsed = parseOrientationWorkflowInput(input);
   if (parsed.kind === "invalid-input") return parsed;
   const request = parsed.value;
-  throwIfAborted(control);
+  control?.signal?.throwIfAborted();
   reportProgress(control, {
     intent: "orientation",
     phase: "model",
     message: "Building workspace orientation model",
   });
+  const navigation = await orientWorkspaceContext(request, deps, control);
+  if (navigation) {
+    if (navigation.kind === "invalid-input") return navigation;
+    control?.signal?.throwIfAborted();
+    return {
+      kind: "completed",
+      data: navigation.directory
+        ? addInstructionFiles(navigation.data, navigation.directory, deps)
+        : navigation.data,
+    };
+  }
+  throwIfAborted(control);
   const model = await buildArchitectureModel(deps.cwd);
   const provider = deps.capability.getProvider(deps.cwd);
   const lspRuntime = deps.capability.getLspRuntimeState(deps.cwd);
@@ -228,7 +240,6 @@ function addInstructionFiles(
   });
   const collected = collectInstructionFiles(matches);
   if (!collected) return result;
-  deps.markInstructionDirsSurfaced(collected.metadata.files.map((file) => file.directory));
   const items: OrientationItem[] = [];
   for (const file of collected.files) {
     items.push(

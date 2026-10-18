@@ -22,7 +22,7 @@ function writeFile(relativePath: string, content: string): void {
 }
 
 describe("directory Orientation facts", () => {
-  it("lists only direct filesystem entries without extension or landmark classifications", async () => {
+  it("lists direct entries and filename counts without inferred roles", async () => {
     writeFile("package.json", JSON.stringify({ name: "root" }));
     writeFile("src/app.ts", "export const app = 1;");
     writeFile("src/lib/util.ts", "export const util = 2;");
@@ -30,7 +30,7 @@ describe("directory Orientation facts", () => {
 
     const result = await executeOrientationTool({ focus: { path: "src" } }, makeTestCtx(tmpDir));
 
-    expect(result.content).toContain("## Direct regular files");
+    expect(result.content).toContain("## Direct files");
     expect(result.content).toContain("`app.ts`");
     expect(result.content).toContain("`README.md`");
     expect(result.content).toContain("## Direct directories");
@@ -58,7 +58,7 @@ describe("directory Orientation facts", () => {
     expect(result.content).toContain("showing 2 of 3; 1 omitted");
     expect(details.data?.sections).toContainEqual(
       expect.objectContaining({
-        key: "filesystem.files",
+        key: "workspace.files",
         evidenceLists: [expect.objectContaining({ totalCount: 3, shownCount: 2, omittedCount: 1 })],
       }),
     );
@@ -74,15 +74,15 @@ describe("directory Orientation facts", () => {
       data?: { sections?: Array<{ key: string; provenance: Array<Record<string, unknown>> }> };
     };
 
-    expect(result.content).toContain("Configuration-declared packages");
-    expect(result.content).toContain("configuration `pnpm-workspace.yaml#packages`");
+    expect(result.content).toContain("Declared memberships");
+    expect(result.content).toContain("`pnpm-workspace.yaml#packages`");
     expect(details.data?.sections).toContainEqual(
       expect.objectContaining({
-        key: "topology.packages",
+        key: "workspace.memberships",
         provenance: [
           expect.objectContaining({
-            source: "configuration",
-            detail: "pnpm-workspace.yaml#packages",
+            source: "manifest",
+            detail: "workspace configuration",
           }),
         ],
       }),
@@ -101,9 +101,9 @@ describe("directory Orientation facts", () => {
     );
 
     expect(result.content).toContain("`index.ts`");
-    expect(result.content).toContain("## Package topology");
-    expect(result.content).toContain("status: partial");
-    expect(result.content).toContain("filesystem-error");
+    expect(result.content).toContain("## Collection limits");
+    expect(result.content).toContain("Collection partial");
+    expect(result.content).toContain("configuration-error");
   });
 
   it("keeps focused filesystem facts when package metadata cannot be parsed", async () => {
@@ -113,8 +113,16 @@ describe("directory Orientation facts", () => {
     const result = await executeOrientationTool({ focus: { path: "src" } }, makeTestCtx(tmpDir));
 
     expect(result.content).toContain("`index.ts`");
-    expect(result.content).toContain("## Package topology");
-    expect(result.content).toContain("status: unavailable");
+    expect(result.content).toContain("## Collection limits");
+    expect(result.content).toContain("Collection partial");
+    expect(result.content.match(/Could not parse metadata:/g)).toHaveLength(1);
+    expect(result.details).toMatchObject({
+      data: {
+        sections: expect.arrayContaining([
+          expect.objectContaining({ key: "workspace.files", status: "complete" }),
+        ]),
+      },
+    });
     expect(result.content).not.toContain("No recognized source files");
     expect(result.content).not.toContain("No structured modules");
   });

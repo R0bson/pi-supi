@@ -58,7 +58,12 @@ export type OrientationItem =
       readonly language: string | null;
       readonly lines: readonly string[];
     }
-  | { readonly kind: "blank" };
+  | { readonly kind: "blank" }
+  | {
+      readonly kind: "table";
+      readonly headers: readonly string[];
+      readonly rows: readonly (readonly string[])[];
+    };
 
 /** Source that established one Orientation section. */
 export interface OrientationProvenance {
@@ -114,6 +119,8 @@ export interface OrientationResultData {
   readonly nextQueries: readonly string[];
   readonly readNext: readonly ReadNextItem[];
   readonly instructions?: InstructionFilesMetadata;
+  /** Captured generic workspace facts; absent for the unchanged file and symbol paths. */
+  readonly workspace?: import("./orientation/workspace-context.ts").WorkspaceOrientationFacts;
   readonly target?: Readonly<TargetStoreEntry>;
 }
 

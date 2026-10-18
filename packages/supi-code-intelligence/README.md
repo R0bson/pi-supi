@@ -32,11 +32,11 @@ Under Bun, including compiled applications such as Pi-Bolt, structural analysis 
 
 - **Language Server Protocol (LSP) tools** for types, definitions, references, implementations, diagnostics, workspace symbols, and semantic refactoring.
 - **Tree-sitter tools** for syntax, declarations, structural search, and calls as written in source code. These calls are not a semantic call graph.
-- **Workspace orientation** from files, manifests, and declared package relationships. Directory orientation can also show local instruction files.
+- **Workspace orientation** from included files and explicit project declarations. It works without package metadata. Directory orientation can also show configured instruction files and Mermaid diagrams of declared relationships.
 - **Visible evidence limits** that distinguish no matches from incomplete or unavailable analysis. Search modes do not silently switch to each other or to text search.
-- **An optional first-turn overview** with discovered modules, manifest descriptions, declared entrypoints, dependencies, and detected languages. It is enabled by default and labeled as untrusted repository evidence, not instructions.
+- **An optional first-turn overview** with observed names, paths, file-extension counts, and project declarations. It is enabled by default. Repository descriptions retain their source fields and are untrusted evidence, not instructions.
 
-The overview is a hidden Pi message, not a live architecture graph. It is not repeated when the active session branch already contains it. All discovered modules are included: 1,000 estimated tokens is a warning threshold, not a size cap.
+The overview is a hidden Pi message, not a live architecture graph. It is not repeated when the active session branch already contains it. It works in source-only projects. Names and paths have priority over descriptions. Omitted collected facts remain in a temporary captured-result file.
 
 ## Usage
 
@@ -82,6 +82,22 @@ Important tool rules:
 - **Health:** `include` accepts `diagnostics` and `servers` (both by default); `level` is `summary` (default) or `detailed`. Server inventory and route counts remain workspace-wide, even with a diagnostic scope. A diagnostic snapshot does not prove that the whole workspace is clean. Tsconfig and jsconfig coverage applies only to TypeScript and JavaScript-family files; other-language files have no `Tsconfig` label.
 
 `code_health({ refresh: true })` retries failed startup and exhausted process-crash routes in scope, with at most one attempt per route per call. It collects fresh diagnostic evidence and reports recovery separately from diagnostic confirmation. A broad maintenance attempt can include active tracked files outside a requested directory, but the diagnostic result keeps the requested directory and tracked-file boundary. The report labels maintenance evidence separately from result coverage. A later refresh can retry a failed route. Reports show up to 16 route entries per recovery list and disclose omitted entries. Use an exact file scope when a route reports `use-exact-file`.
+
+### Workspace and directory observations
+
+Automatic collection stays within the session working directory. Ancestor Git roots and workspace manifests do not expand that boundary. An explicit directory focus can select a different root. Each tool call makes a new observation; its output does not depend on an earlier overview.
+
+- Git inventories contain tracked and non-ignored untracked files. Tracked files remain eligible when ignore rules match them. Configured exclusions still apply.
+- Without Git, collection uses accessible files and configured exclusions. Directory names do not determine project roles or generated-file status.
+- Symbolic links are recorded, not followed. An explicit ignored or excluded directory can be observed separately. This does not change automatic inclusion elsewhere.
+- Metadata readers cover Node `package.json` and workspace declarations, Python `[project]` in `pyproject.toml`, Rust `Cargo.toml`, and Go `go.mod` / `go.work`. They do not run build tools or project code.
+- Unsupported, dynamic, inherited, malformed, and unresolved declarations are disclosed. Go replacement directives and unsupported quoted-string escapes are not interpreted. Native project kinds remain separate; nearby Python or Rust projects do not become Node workspace members.
+- Directory diagrams retain separate dependency categories and declared values. Unique declared-name matches do not prove installed dependency resolution or runtime architecture.
+- The inventory retains at most 10,000 entries. An explicit in-root directory is collected before unrelated paths use that budget. External directory focus uses its own observation. Metadata files have a 1 MiB read limit. The first-turn collector has a 10-second deadline; tool calls use their request control. Results disclose incomplete collection.
+
+Estimated tokens are `ceil(characters / 4)`. The overview warns above 1,000 and has a 2,000-token hard cap. Workspace and directory navigation warn above 2,000 and have a 4,000-token hard cap. Warnings go to UI and debug only. `maxResults` can reduce a list, but cannot bypass the total cap.
+
+Captured-result files contain the complete collected observation, not just the selected rows. Reading them does not refresh facts or establish that every possible fact was collected. Instruction snippets have a separate budget and still respect Pi's final output safety limit. Unread instruction text is identified and is not recorded as supplied. File- and symbol-focused navigation retain their existing output.
 
 ### Transcript failures
 
@@ -151,7 +167,7 @@ Project values override global values, which override defaults. Project configur
 |---|---|---|
 | `code-intelligence.overviewEnabled` | `true` | Add the hidden overview; the choice is fixed for the session |
 | `code-intelligence.instructionFileNames` | `["CLAUDE.md", "AGENTS.md"]` | Ordered plain filenames for directory instruction discovery |
-| `code-intelligence.exclude` | `[]` | Gitignore-style patterns for automatic LSP and broad AST work, not exact requests |
+| `code-intelligence.exclude` | `[]` | Gitignore-style patterns for automatic workspace navigation, LSP work, and broad AST searches; not an access control |
 | `lsp.servers.<language>.enabled` | Enabled unless `false` | Disable a language server |
 
 Example `.pi/supi/config.json`:
@@ -171,7 +187,7 @@ Example `.pi/supi/config.json`:
 }
 ```
 
-Use `typescript`, `python`, `rust`, `go`, `c`, `ruby`, `java`, `kotlin`, `bash`, `html`, `sql`, `r`, or `latex` for built-in server keys (`cpp` aliases `c`). Server command and routing overrides are defined in the [LSP configuration reference](../supi-lsp/README.md#custom-server-configuration). `.pi-lsp.json` is not read. Only the boolean `true` enables the overview; non-boolean values do not enable it. The shared exclusion list uses gitignore syntax and project-over-global replacement. An explicit project `[]` clears configured patterns. `/supi-settings` shows the config path and says to reload or restart Pi after saving. Saved exclusions apply after reload or restart; exact file and explicitly selected directory requests remain available. An old `lsp.exclude` value reports a migration error and is not used.
+Use `typescript`, `python`, `rust`, `go`, `c`, `ruby`, `java`, `kotlin`, `bash`, `html`, `sql`, `r`, or `latex` for built-in server keys (`cpp` aliases `c`). Server command and routing overrides are defined in the [LSP configuration reference](../supi-lsp/README.md#custom-server-configuration). `.pi-lsp.json` is not read. Only the boolean `true` enables the overview; non-boolean values do not enable it. The shared exclusion list uses gitignore syntax and project-over-global replacement. An explicit project `[]` clears configured patterns. `/supi-settings` shows the config path and says to reload or restart Pi after saving. LSP and AST work use saved exclusions after reload or restart. New workspace observations read the current exclusions. Exact file and explicitly selected directory requests remain available. An old `lsp.exclude` value reports a migration error and is not used.
 
 Directory orientation checks the path from the workspace root to the focused directory. It selects the first valid configured instruction file per directory, skips files already loaded by Pi or shown on the active branch, and shows at most 200 lines per file. Resolved instruction paths must stay inside the workspace. These snippets are tool output, not additions to Pi's system prompt.
 
@@ -179,7 +195,7 @@ Directory orientation checks the path from the workspace root to the focused dir
 
 Pi extensions run with your system permissions; this package is not a sandbox. Language servers run as local processes and receive source files. Review server commands and project configuration before trusting a project. `code-intelligence.exclude` and AST scan exclusions are not access controls.
 
-Tool results and the hidden overview enter Pi's model context and can be saved in session history. They can contain source text, paths, manifest data, diagnostics, and instruction-file contents. Truncated tool results and graph display overflow also leave full returned text in local temporary files. These files are not durable session storage and can be removed by system cleanup. “Hidden” means not displayed in the transcript, not hidden from the model.
+Tool results and the hidden overview enter Pi's model context and can be saved in session history. They can contain source text, paths, manifest data, diagnostics, and instruction-file contents. Truncated tool results, orientation captures, and graph display overflow also leave collected text in local temporary files. These files are not durable session storage and can be removed by system cleanup. “Hidden” means not displayed in the transcript, not hidden from the model.
 
 ## Public entrypoints
 

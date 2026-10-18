@@ -193,7 +193,6 @@ describe("structural workflow request control", () => {
         },
         nativeInstructionPaths: new Set(),
         surfacedInstructionDirs: new Set(),
-        markInstructionDirsSurfaced: () => {},
         projectTrusted: false,
       },
       requestControl,

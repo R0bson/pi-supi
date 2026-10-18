@@ -38,6 +38,8 @@
     "@mrclrchtr/supi-core": "workspace:*",
     "@mrclrchtr/supi-lsp": "workspace:*",
     "@mrclrchtr/supi-tree-sitter": "workspace:*",
+    "ignore": "^7.0.12",
+    "smol-toml": "^1.9.1",
     "yaml": "^2.9.0"
   },
   "bundledDependencies": [
@@ -45,6 +47,8 @@
     "@mrclrchtr/supi-core",
     "@mrclrchtr/supi-lsp",
     "@mrclrchtr/supi-tree-sitter",
+    "ignore",
+    "smol-toml",
     "yaml"
   ],
   "peerDependencies": {

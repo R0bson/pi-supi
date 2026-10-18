@@ -115,6 +115,7 @@ export function createCodeIntelligenceApp(pi: ExtensionAPI): CodeIntelligenceApp
     session.reconstructInstructionState(
       branch as Parameters<typeof session.reconstructInstructionState>[0],
     );
+    session.restoreOverviewInjection(false);
     for (const entry of branch as Array<{ type?: string; customType?: string }>) {
       if (entry.type === "custom_message" && entry.customType === OVERVIEW_CUSTOM_TYPE) {
         session.restoreOverviewInjection();

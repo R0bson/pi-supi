@@ -267,8 +267,8 @@ describe("code_orientation tool", () => {
       makeCtx({ cwd: tmpDir }),
     )) as { content: Array<{ text: string }> };
 
-    expect(result.content[0].text).toContain("# Directory: packages/app");
-    expect(result.content[0].text).toContain("## Package manifest");
+    expect(result.content[0].text).toContain("# Directory Orientation: `packages/app`");
+    expect(result.content[0].text).toContain("packages/app/package.json");
     expect(result.content[0].text).toContain("Main app");
   });
 

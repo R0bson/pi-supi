@@ -5,6 +5,7 @@ import {
   startDebugTimer,
   truncateDebugIdentity as truncateIdentity,
 } from "@mrclrchtr/supi-core/debug";
+import { reportWorkspaceBudget } from "../overview/budget.ts";
 import type { WorkspaceCodeIntelligenceSession } from "../session/session.ts";
 import {
   CODE_INTELLIGENCE_TOOL_PROMPT_SURFACES,
@@ -129,6 +130,7 @@ export function registerCodeIntelligenceTools(
             cwd: ctx.cwd,
             outcome: "completed",
           });
+          reportWorkspaceBudget(ctx, details?.budgetWarning, operationId);
           return boundCodeToolResult(content, details, {
             toolName: spec.name,
             maxLines: spec.maxLines,

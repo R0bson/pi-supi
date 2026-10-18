@@ -108,7 +108,20 @@ describe("overview injection", () => {
     return handlers[1];
   }
 
-  it("does not inject overview when project has no model data", async () => {
+  it("injects a bounded overview without a package manifest", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "ci-source-only-"));
+    tempDirs.push(root);
+    writeFileSync(path.join(root, "main.py"), "pass\n");
+    const ctx = makeCtx(root);
+    await pi.getHandlers("session_start")[0]?.({ reason: "startup" }, ctx);
+    const result = (await getOverviewHandler()(null, ctx)) as { message?: { content: string } };
+    expect(result?.message?.content).toContain("1 regular file");
+    expect(result?.message?.content).toContain(".py");
+    expect(result?.message?.content).not.toContain("No package.json");
+    expect(result?.message?.content.length).toBeLessThanOrEqual(8000);
+  });
+
+  it("does not inject an overview for an inaccessible working directory", async () => {
     const handler = getOverviewHandler();
     const sessionStartHandler = pi.getHandlers("session_start")[0];
 
@@ -167,6 +180,20 @@ describe("overview injection", () => {
     const handler = getOverviewHandler();
     const result = (await handler(null, ctx)) as { message?: { customType?: string } } | undefined;
     expect(result?.message?.customType).toBeUndefined();
+  });
+
+  it("injects after switching from a branch with an overview to one without it", async () => {
+    const root = makeWorkspace(2);
+    writeProjectConfig(root, { overviewEnabled: true });
+    const current = makeCtx(root, [
+      { type: "custom_message", customType: "code-intelligence-overview" },
+    ]);
+    await pi.getHandlers("session_start")[0]?.({ reason: "startup" }, current);
+    expect(await getOverviewHandler()(null, current)).toBeUndefined();
+    const next = makeCtx(root, []);
+    await pi.getHandlers("session_tree")[0]?.({ newLeafId: "empty-branch" }, next);
+    const result = await getOverviewHandler()(null, next);
+    expect(result).toMatchObject({ message: { customType: "code-intelligence-overview" } });
   });
 
   it("shutdown resets sessions", async () => {

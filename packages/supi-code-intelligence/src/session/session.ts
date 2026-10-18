@@ -216,8 +216,8 @@ export class WorkspaceCodeIntelligenceSession {
   }
 
   /** Restore overview state from the active session branch. */
-  restoreOverviewInjection(): void {
-    this.#hasInjectedOverview = true;
+  restoreOverviewInjection(injected = true): void {
+    this.#hasInjectedOverview = injected;
   }
 
   /**
@@ -343,7 +343,6 @@ export class WorkspaceCodeIntelligenceSession {
         ...this.targetWorkflowDeps(),
         nativeInstructionPaths: this.#nativeInstructionPaths,
         surfacedInstructionDirs: this.#surfacedInstructionDirs,
-        markInstructionDirsSurfaced: (directories) => this.markInstructionDirsSurfaced(directories),
         projectTrusted: this.#projectTrusted,
         homeDir: this.#homeDir,
       },

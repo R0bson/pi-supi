@@ -154,6 +154,8 @@ function formatOrientationItem(item: OrientationItem): string {
       return item.lines.join(" ");
     case "blank":
       return "";
+    case "table":
+      return [item.headers.join(" | "), ...item.rows.map((row) => row.join(" | "))].join("\n");
   }
 }
 
@@ -195,6 +197,7 @@ function uniqueProvenance(sections: readonly OrientationSectionData[]) {
 import type { CodeIntelResult, CodeIntelToolExecCtx } from "../../types/index.ts";
 import { contextErrorResult } from "../result/errors.ts";
 import { renderOrientationResult } from "./markdown.ts";
+import { prepareWorkspaceOutput } from "./workspace-output.ts";
 
 type OrientationOutcome = Awaited<ReturnType<CodeIntelToolExecCtx["session"]["orient"]>>;
 
@@ -253,12 +256,18 @@ export function finishOrientationResult(outcome: OrientationOutcome): CodeIntelR
       },
     };
   }
-  const assembly = assembleOrientationResult(outcome.data);
+  return finishCompletedOrientation(outcome.data);
+}
+
+function finishCompletedOrientation(data: OrientationResultData): CodeIntelResult {
+  const navigation = data.workspace ? prepareWorkspaceOutput(data) : null;
+  const assembly = assembleOrientationResult(navigation?.data ?? data);
   return {
-    content: renderOrientationResult(assembly),
+    content: navigation?.content ?? renderOrientationResult(assembly),
     details: {
       type: "context",
       data: assembly.details,
+      budgetWarning: navigation?.warning,
       status: "completed",
       displaySections: assembly.displaySections,
     },

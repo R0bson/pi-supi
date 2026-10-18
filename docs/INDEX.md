@@ -34,6 +34,7 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 - [ADR 0024: Shared code-intelligence exclusions](adr/0024-shared-code-intelligence-exclusions.md) — one configured list for automatic LSP work and broad AST searches.
 - [ADR 0022: Request-confirmed, LSP-agnostic diagnostics](adr/0022-request-confirmed-lsp-agnostic-diagnostics.md) — current diagnostic source, confirmation, scheduling, and coverage policy; supersedes the diagnostic-confirmation parts of ADR 0020.
 - [ADR 0025: Installation Matrix declarations](adr/0025-installation-matrix-declarations.md) — direct package declarations stay separate from effective resource activation.
+- [Code Intelligence: bounded workspace observations](../packages/supi-code-intelligence/docs/adr/0003-bounded-workspace-orientation.md) — generic inventories, native declarations, output budgets, captured results, and instruction delivery.
 - `agents/` — issue tracker and triage workflow for agent work in this repo.
 
 ## ops/
@@ -49,6 +50,10 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 ## Package design references
 
 - [Background delegation](../packages/supi-agent/docs/background-delegation.md) — approved execution, completion, cancellation, capacity, and Usage accounting for background Agent Runs.
+
+## Design examples
+
+- Code Intelligence output comparison: [pre-change output](../packages/supi-code-intelligence/docs/orientation/current.md) and [approved target](../packages/supi-code-intelligence/docs/orientation/target.md). Each file contains only frozen agent-visible design examples. Their temporary capture paths can expire.
 
 ## Maintenance rules
 

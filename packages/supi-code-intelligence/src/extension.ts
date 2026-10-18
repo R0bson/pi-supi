@@ -1,20 +1,11 @@
 // Code Intelligence extension entry point — registers the focused code-intelligence tools,
 // shared provider lifecycle, settings, UI, and the unified /supi-ci-status command.
 
-import type {
-  BeforeAgentStartEventResult,
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import {
-  recordDebugEvent,
-  truncateDebugIdentity as truncateIdentity,
-} from "@mrclrchtr/supi-core/debug";
-import { buildArchitectureModel } from "./analysis/architecture/discovery.ts";
+import type { BeforeAgentStartEventResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createCodeIntelligenceApp } from "./app/app.ts";
 import { registerCodeIntelligenceSettings, resolveOverviewEnabled } from "./config.ts";
-import { estimateTokens, OVERVIEW_TOKEN_BUDGET, renderOverview } from "./overview/overview.ts";
-import { buildOverviewData } from "./overview/overview-data.ts";
+import { reportWorkspaceBudget } from "./overview/budget.ts";
+import { collectOverview } from "./overview/collect.ts";
 import type { WorkspaceCodeIntelligenceSession } from "./session/session.ts";
 import { registerLspSessionLifecycle } from "./substrate/lsp/lifecycle.ts";
 import { registerWorkspaceRecoveryHandler } from "./substrate/lsp/recovery.ts";
@@ -25,27 +16,6 @@ import { registerLspFooterContribution } from "./ui/footer.ts";
 import { registerCiStatusCommand } from "./ui/status-command.ts";
 
 const OVERVIEW_CUSTOM_TYPE = "code-intelligence-overview";
-
-/**
- * Warn about an over-budget overview without capping it.
- *
- * The injected overview is never truncated; the debug record exists in every
- * mode, and the visible notification needs a UI.
- */
-function warnOverviewBudget(ctx: ExtensionContext, estimatedTokens: number): void {
-  const message = `Code Intelligence overview exceeds soft token budget: ${estimatedTokens} tokens (budget: ${OVERVIEW_TOKEN_BUDGET})`;
-  recordDebugEvent({
-    source: "code-intelligence",
-    level: "warning",
-    category: "overview",
-    message,
-    cwd: truncateIdentity(ctx.cwd),
-    data: { estimatedTokens, budget: OVERVIEW_TOKEN_BUDGET },
-  });
-  if (ctx.hasUI) {
-    ctx.ui.notify(message, "warning");
-  }
-}
 
 /** Register the full interactive Code Intelligence profile. */
 export default function codeIntelligenceExtension(
@@ -129,23 +99,20 @@ export default function codeIntelligenceExtension(
       }
       if (!session.claimOverviewInjection()) return;
 
-      const model = await buildArchitectureModel(ctx.cwd);
-      if (model.modules.length === 0) return;
-
-      const data = buildOverviewData(model);
-      if (!data) return;
-
-      const overview = renderOverview(data);
-      if (!overview) return;
-
-      const estimatedTokens = estimateTokens(overview);
-      if (estimatedTokens > OVERVIEW_TOKEN_BUDGET) {
-        warnOverviewBudget(ctx, estimatedTokens);
+      try {
+        const overview = await collectOverview(ctx.cwd, ctx.isProjectTrusted(), homeDir);
+        if (!overview) {
+          session.restoreOverviewInjection(false);
+          return;
+        }
+        reportWorkspaceBudget(ctx, overview.warning);
+        return {
+          message: { customType: OVERVIEW_CUSTOM_TYPE, display: false, content: overview.content },
+        };
+      } catch (error) {
+        session.restoreOverviewInjection(false);
+        throw error;
       }
-
-      return {
-        message: { customType: OVERVIEW_CUSTOM_TYPE, display: false, content: overview },
-      };
     },
   );
 }

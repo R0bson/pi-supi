@@ -21,5 +21,12 @@ export async function executeOrientationTool(
     params as OrientationWorkflowInput,
     toWorkflowControl(ctx),
   );
-  return finishOrientationResult(outcome);
+  const result = finishOrientationResult(outcome);
+  if (result.details?.type === "context") {
+    const supplied = result.details.data.instructions?.files ?? [];
+    ctx.session.markInstructionDirsSurfaced(
+      supplied.filter((file) => file.shownLines > 0).map((file) => file.directory),
+    );
+  }
+  return result;
 }
