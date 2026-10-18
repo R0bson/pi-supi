@@ -2697,22 +2697,21 @@ export class LspManager {
     collection: WorkspaceSymbolCollection,
     scopes: readonly string[] | undefined,
   ): WorkspaceSymbolCollection {
-    const excludedExamples: string[] = [];
+    const excludedExamples = new Set(collection.excludedExamples ?? []);
     let excludedCount = 0;
     const results = collection.results.filter((result) => {
       const file = uriToFile(result.location.uri);
       if (this.isWorkspaceSymbolResultAllowed(file, scopes)) return true;
       excludedCount++;
-      if (excludedExamples.length < 5) {
-        excludedExamples.push(displayRelativeFilePath(file, this.cwd));
-      }
+      const example = displayRelativeFilePath(file, this.cwd);
+      if (excludedExamples.size < 5) excludedExamples.add(example);
       return false;
     });
     return {
       ...collection,
       results,
       excludedCount: (collection.excludedCount ?? 0) + excludedCount,
-      excludedExamples: [...(collection.excludedExamples ?? []), ...excludedExamples].slice(0, 5),
+      excludedExamples: [...excludedExamples].slice(0, 5),
     };
   }
 

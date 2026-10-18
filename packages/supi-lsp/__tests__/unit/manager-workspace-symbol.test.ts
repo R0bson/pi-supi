@@ -102,6 +102,11 @@ describe("LspManager.workspaceSymbol filtering", () => {
         location: { uri: fileToUri(excluded), range: { start: {}, end: {} } },
       },
       {
+        name: "AnotherDrop",
+        kind: 12,
+        location: { uri: fileToUri(excluded), range: { start: {}, end: {} } },
+      },
+      {
         name: "Widget",
         kind: 12,
         location: { uri: fileToUri(visible), range: { start: {}, end: {} } },
@@ -136,8 +141,15 @@ describe("LspManager.workspaceSymbol filtering", () => {
 
     expect(filtered).toMatchObject({
       kind: "partial",
-      data: [symbols[1]],
-      reason: expect.stringContaining("excluded 1 workspace-symbol result"),
+      data: [symbols[2]],
+      reason:
+        "Automatic path policy excluded 2 workspace-symbol results. Examples: configured/drop.ts.",
+      metadata: {
+        automaticPathExclusion: {
+          excludedCount: 2,
+          examples: ["configured/drop.ts"],
+        },
+      },
     });
 
     const explicit = await manager.workspaceSymbol("Drop", undefined, [excluded]);
