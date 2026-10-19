@@ -82,6 +82,27 @@ Results report web use, workspace use, observed and claimed references, warnings
 
 Use `/supi-settings` → **Consulting** to disable the tool. Disabling it skips availability checks and removes `consulting_run` from the active tool list.
 
+## Failure diagnostics
+
+Execution failures report a fixed reason when the adapter can identify it:
+
+- Missing final result, missing structured answer, or answer schema mismatch.
+- Unsuccessful final result or data received after the final result.
+- Malformed JSON, a non-object event, or an output limit exceeded.
+- Missing conversation identifier, process failure, timeout, or cancellation.
+
+An observed tool permission denial is reported separately. It does not prove the cause of a later failure. A denial does not fail a Consultation that returns a valid answer. Workspace Access does not grant access to files outside the selected workspace.
+
+When SuPi Debug is enabled, failed executions emit one `consulting/consultation.failed` event at `error` level. Cancellations emit `consulting/consultation.cancelled` at `info` level. Use the `debug` tool:
+
+```json
+{ "source": "consulting", "level": "error", "limit": 10 }
+```
+
+Omit `level` to include cancellations. Add `sessionFile` to inspect events persisted in a saved PI session. A response aborted before the adapter starts has no Consulting event.
+
+Events contain the execution phase, timing, selected model, workspace-access and follow-up flags, failure category and reason, and available event counts, terminal-state flags, permission-denial count, and exit code. They exclude prompts, answers, resource paths, conversation IDs, raw stdout, stderr, tool payloads, and error causes, even when raw Debug access is enabled. The event's `cwd` identifies the selected working directory. Failure messages remain specific when Debug is disabled.
+
 ## Security limits
 
 The Antigravity adapter enforces its Inspection Permission Set in the Isolated Antigravity Home. It allows `read_url(*)` and denies known file writes, commands, unsandboxed actions, MCP, and URL execution. These rules are **not an operating-system sandbox**.

@@ -9,9 +9,10 @@ export function normalizeProtocolEvent(event: Record<string, unknown>): Record<s
 }
 
 function normalizeResultEnvelope(event: Record<string, unknown>): Record<string, unknown> {
-  return isRecord(event.result)
-    ? { ...event, ...event.result, type: "result" }
-    : { ...event, type: "result" };
+  if (!isRecord(event.result)) return { ...event, type: "result" };
+  // Remove the envelope so its status fields cannot be mistaken for answer data.
+  const { result, ...envelope } = event;
+  return { ...envelope, ...result, type: "result" };
 }
 
 function normalizeStepUpdateEnvelope(event: Record<string, unknown>): Record<string, unknown> {

@@ -64,6 +64,14 @@ process.stdin.on("end", () => {
     process.stdout.write(`${"x".repeat(128 * 1024 + 1)}\n`);
     return;
   }
+  if (input.includes("non-object")) {
+    process.stdout.write("[]\n");
+    return;
+  }
+  if (input.includes("byte-limit")) {
+    process.stdout.write(`${" ".repeat(64 * 1024)}\n`.repeat(81));
+    return;
+  }
   if (input.includes("exit-nonzero")) {
     process.stderr.write("fixture process failure\n");
     process.exitCode = 7;
@@ -99,11 +107,38 @@ process.stdin.on("end", () => {
     emitToolStep(stepIndex, terminalState, name, parameters, error);
   };
   const emitResult = () => {
+    const scenario = userEvent.message.content.match(/^response-case=([\w-]+)/)?.[1];
+    if (scenario) {
+      emitResponseCase(scenario, conversationId, emitEvent);
+      return;
+    }
     emitEvent({ event: "init", conversation_id: conversationId, init: {} });
     if (input.includes("fail")) {
       emitEvent({
         event: "result",
         result: { conversation_id: conversationId, status: "ERROR" },
+      });
+      return;
+    }
+    if (input.includes("denied-incomplete")) {
+      emitToolPair("read_file", { path: "/private/tmp/private-image.png" }, "ERROR", {
+        message: "Permission denied: /private/tmp/private-image.png; private diagnostic text",
+      });
+      if (input.includes("no-terminal")) return;
+      if (input.includes("broken-tail")) {
+        process.stdout.write("private output text; authorization=fixture-auth");
+        return;
+      }
+      if (input.includes("wait")) {
+        setTimeout(() => {}, 30_000);
+        return;
+      }
+      emitEvent({
+        event: "result",
+        result: {
+          conversation_id: conversationId,
+          status: input.includes("terminal-error") ? "ERROR" : "SUCCESS",
+        },
       });
       return;
     }
@@ -136,3 +171,21 @@ process.stdin.on("end", () => {
   if (input.includes("delay")) setTimeout(emitResult, 250);
   else emitResult();
 });
+
+function emitResponseCase(scenario, conversationId, emitEvent) {
+  const answer = { answer: "Done.", sources: [], workspaceEvidence: [] };
+  const result = { status: "SUCCESS", structured_output: answer };
+  if (scenario !== "missing-conversation") {
+    emitEvent({ event: "init", conversation_id: conversationId });
+  }
+  if (scenario === "no-terminal") return;
+  if (scenario === "event-limit") {
+    for (let index = 0; index < 512; index++) emitEvent({ event: "init" });
+    return;
+  }
+  if (scenario === "terminal-error") result.status = "ERROR";
+  if (scenario === "missing-answer") delete result.structured_output;
+  if (scenario === "invalid-answer") result.structured_output.answer = 42;
+  emitEvent({ event: "result", result });
+  if (scenario === "trailing-event") emitEvent({ event: "init" });
+}

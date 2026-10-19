@@ -6,6 +6,7 @@ import type { AntigravityExecutionFacts, AntigravityProgressCallback } from "../
 import { eventType, toolName } from "./event-values.ts";
 import { AntigravityEventAccumulator } from "./events.ts";
 import { MAX_STREAM_EVENTS, parseNdjsonLine, StreamLimitError } from "./ndjson.ts";
+import { AntigravityResponseError } from "./response-error.ts";
 import type { AntigravityProbeResult } from "./subprocess.ts";
 import { AntigravityProcessError, runBoundedChildProcess } from "./subprocess.ts";
 
@@ -72,6 +73,8 @@ export async function runAntigravityConversation(options: {
     join(options.schemaDirectoryParent ?? tmpdir(), "supi-consulting-schema-"),
   );
   const schemaPath = join(schemaDirectory, "answer.json");
+  const accumulator = new AntigravityEventAccumulator({ workspaceDirectory: options.cwd });
+  let eventCount = 0;
   try {
     await writeFile(schemaPath, `${JSON.stringify(options.schema)}\n`, { mode: 0o600 });
     const args = buildAntigravityRunArguments(
@@ -80,8 +83,6 @@ export async function runAntigravityConversation(options: {
       options.conversationId,
       options.workspaceDirectory,
     );
-    const accumulator = new AntigravityEventAccumulator({ workspaceDirectory: options.cwd });
-    let eventCount = 0;
     await runBoundedChildProcess({
       args,
       cwd: options.cwd,
@@ -94,7 +95,7 @@ export async function runAntigravityConversation(options: {
         if (!event) return;
         eventCount += 1;
         if (eventCount > MAX_STREAM_EVENTS) {
-          throw new StreamLimitError("Antigravity returned too many stream events.");
+          throw new StreamLimitError("event-limit");
         }
         options.onActivity?.(safeActivityLabel(event));
         accumulator.consume(event);
@@ -103,11 +104,19 @@ export async function runAntigravityConversation(options: {
     });
     return accumulator.finish();
   } catch (error) {
-    if (error instanceof AntigravityProcessError) throw error;
+    const processError = error instanceof AntigravityProcessError ? error : undefined;
     // biome-ignore lint/style/useErrorCause: the custom process error preserves the protocol cause.
-    throw new AntigravityProcessError("Antigravity returned an invalid stream.", "protocol", {
-      cause: error,
-    });
+    throw new AntigravityProcessError(
+      processError?.message ?? "Antigravity returned an invalid stream.",
+      processError?.kind ?? "protocol",
+      {
+        cause: error,
+        reason: error instanceof AntigravityResponseError ? error.reason : processError?.reason,
+        exitCode: processError?.exitCode,
+        stderr: processError?.stderr,
+        diagnostics: { ...accumulator.diagnostics, eventCount },
+      },
+    );
   } finally {
     await rm(schemaDirectory, { recursive: true, force: true });
   }

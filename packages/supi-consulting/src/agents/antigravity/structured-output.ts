@@ -1,6 +1,7 @@
 import { type TSchema, Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ConsultationAnswer } from "../../types.ts";
+import { AntigravityResponseError } from "./process/response-error.ts";
 
 /** Maximum length of Antigravity's final answer text. */
 export const MAX_ANSWER_CHARS = 16_000;
@@ -52,7 +53,7 @@ export const ANTIGRAVITY_ANSWER_SCHEMA: TSchema = Type.Object(
 /** Validate and return the exact structured answer shape. */
 export function validateAntigravityAnswer(value: unknown): ConsultationAnswer {
   if (!Value.Check(ANTIGRAVITY_ANSWER_SCHEMA, value)) {
-    throw new Error("Antigravity returned invalid structured output.");
+    throw new AntigravityResponseError("invalid-answer");
   }
   return value as ConsultationAnswer;
 }

@@ -1,3 +1,5 @@
+import { AntigravityResponseError } from "./response-error.ts";
+
 /** Limits for streamed Antigravity output. */
 export const MAX_STDOUT_LINE_BYTES = 128 * 1024;
 export const MAX_STDOUT_BYTES = 5 * 1024 * 1024;
@@ -5,9 +7,9 @@ export const MAX_STREAM_EVENTS = 512;
 export const MAX_RETAINED_STDERR_BYTES = 8 * 1024;
 
 /** Error raised when a process stream exceeds a package-owned bound. */
-export class StreamLimitError extends Error {
-  constructor(message: string) {
-    super(message);
+export class StreamLimitError extends AntigravityResponseError {
+  constructor(reason: "stdout-line-limit" | "stdout-byte-limit" | "event-limit") {
+    super(reason);
     this.name = "StreamLimitError";
   }
 }
@@ -40,7 +42,7 @@ export class BoundedLineParser {
   feed(chunk: Uint8Array, onLine: (line: string) => void): void {
     this.#totalBytes += chunk.byteLength;
     if (this.#totalBytes > this.#maxTotalBytes) {
-      throw new StreamLimitError("Antigravity stdout exceeded its byte limit.");
+      throw new StreamLimitError("stdout-byte-limit");
     }
 
     let start = 0;
@@ -62,7 +64,7 @@ export class BoundedLineParser {
     if (part.byteLength === 0) return;
     this.#lineBytes += part.byteLength;
     if (this.#lineBytes > this.#maxLineBytes) {
-      throw new StreamLimitError("An Antigravity stdout line exceeded its byte limit.");
+      throw new StreamLimitError("stdout-line-limit");
     }
     this.#lineParts.push(Buffer.from(part));
   }
@@ -111,10 +113,10 @@ export function parseNdjsonLine(line: string): Record<string, unknown> | undefin
   try {
     parsed = JSON.parse(line);
   } catch (error) {
-    throw new Error("Antigravity returned malformed NDJSON.", { cause: error });
+    throw new AntigravityResponseError("malformed-json", { cause: error });
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("Antigravity returned a non-object NDJSON event.");
+    throw new AntigravityResponseError("invalid-event");
   }
   return parsed as Record<string, unknown>;
 }

@@ -23,6 +23,7 @@ import {
   toolName,
 } from "./event-values.ts";
 import { normalizeProtocolEvent } from "./protocol.ts";
+import { AntigravityResponseError } from "./response-error.ts";
 import { mergeUsage, readUsage } from "./usage.ts";
 
 interface PendingTool {
@@ -67,8 +68,7 @@ export class AntigravityEventAccumulator {
 
   /** Consume one already-parsed event. */
   consume(event: Record<string, unknown>): void {
-    if (this.#terminalSeen)
-      throw new Error("Antigravity returned events after its terminal event.");
+    if (this.#terminalSeen) throw new AntigravityResponseError("events-after-terminal");
     const normalizedEvent = normalizeProtocolEvent(event);
     this.#conversationId =
       conversationId(event) ?? conversationId(normalizedEvent) ?? this.#conversationId;
@@ -103,14 +103,25 @@ export class AntigravityEventAccumulator {
     }
   }
 
+  /** Return safe execution facts even when the response is incomplete. */
+  get diagnostics(): {
+    permissionDenials: number;
+    terminalSeen: boolean;
+    terminalSucceeded: boolean;
+  } {
+    return {
+      permissionDenials: this.#permissionDenials,
+      terminalSeen: this.#terminalSeen,
+      terminalSucceeded: this.#terminalSucceeded,
+    };
+  }
+
   /** Finish the reduction and validate terminal structured output. */
   finish(): AntigravityExecutionFacts {
-    if (!this.#terminalSeen || !this.#terminalSucceeded) {
-      throw new Error("Antigravity did not return a successful terminal event.");
-    }
-    if (!this.#candidate)
-      throw new Error("Antigravity terminal output was missing structured data.");
-    if (!this.#conversationId) throw new Error("Antigravity did not return a conversation handle.");
+    if (!this.#terminalSeen) throw new AntigravityResponseError("missing-terminal");
+    if (!this.#terminalSucceeded) throw new AntigravityResponseError("terminal-failed");
+    if (!this.#candidate) throw new AntigravityResponseError("missing-answer");
+    if (!this.#conversationId) throw new AntigravityResponseError("missing-conversation");
     return {
       answer: validateAntigravityAnswer(this.#candidate),
       conversationId: this.#conversationId,
@@ -254,7 +265,7 @@ export class AntigravityEventAccumulator {
     this.#terminalSeen = true;
     const status = eventStatus(event);
     if (isErrorStatus(status) || !hasExplicitSuccess(event, status)) {
-      throw new Error("Antigravity returned a non-success terminal status.");
+      throw new AntigravityResponseError("terminal-failed");
     }
     this.#terminalSucceeded = true;
     this.#candidate = answerCandidate(event);

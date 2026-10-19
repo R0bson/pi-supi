@@ -1,3 +1,4 @@
+import { startDebugTimer } from "@mrclrchtr/supi-core/debug";
 import type { ConsultationActivity, ConsultationExecutionFacts } from "../../types.ts";
 import { ConsultingAgentError, type ConsultingAgentFailureKind } from "../errors.ts";
 import type {
@@ -13,6 +14,7 @@ import {
   type IsolatedAntigravityPaths,
   prepareIsolatedAntigravityHome,
 } from "./isolated-home.ts";
+import { isCuratedModel } from "./models.ts";
 import { probeProjectHooks } from "./process/hooks.ts";
 import { AntigravityProcessError, runAntigravityConversation } from "./process/runner.ts";
 import { ANTIGRAVITY_ANSWER_SCHEMA } from "./structured-output.ts";
@@ -21,6 +23,8 @@ const MAX_RETAINED_REFERENCE_HASHES = 512;
 const MAX_WARNING_COUNT = 24;
 const MAX_WARNING_CHARS = 500;
 const CONTINUATION_PREFIX = "agy1.";
+
+type ExecutionPhase = "preparation" | "hook-probe" | "conversation" | "validation";
 
 /** The one agent supported by Consulting in this package. */
 export const ANTIGRAVITY_AGENT_ID = "antigravity" as const;
@@ -65,21 +69,53 @@ class AntigravityAdapter implements ConsultingAgentAdapter {
   }
 
   async execute(options: ConsultingAgentExecutionOptions): Promise<ConsultationExecutionFacts> {
+    const timer = startDebugTimer();
+    let phase: ExecutionPhase = "preparation";
     try {
-      return await this.#execute(options);
+      return await this.#execute(options, (nextPhase) => {
+        timer.mark(phase);
+        phase = nextPhase;
+      });
     } catch (error) {
-      throw safeExecutionFailure(error);
+      const failure = safeExecutionFailure(error);
+      const canceled = failure.kind === "cancelled";
+      timer.finish(
+        () => ({
+          source: "consulting",
+          level: canceled ? "info" : "error",
+          category: canceled ? "consultation.cancelled" : "consultation.failed",
+          message: failure.message,
+          cwd: options.canonicalWorkingDirectory,
+          data: {
+            agent: this.identity,
+            model: isCuratedModel(options.model) ? options.model : "unknown",
+            workspaceAccess: options.workspaceAccess,
+            followUp: options.continuation !== undefined,
+            phase,
+            kind: failure.kind,
+            reason: failure.reason ?? failure.kind,
+            ...failure.diagnostics,
+          },
+        }),
+        phase,
+      );
+      throw failure;
     }
   }
 
-  async #execute(options: ConsultingAgentExecutionOptions): Promise<ConsultationExecutionFacts> {
+  async #execute(
+    options: ConsultingAgentExecutionOptions,
+    onPhase: (phase: ExecutionPhase) => void,
+  ): Promise<ConsultationExecutionFacts> {
     const expectedConversationId = options.continuation
       ? decodeContinuation(options.continuation)
       : undefined;
     await prepareIsolatedAntigravityHome(this.#paths);
+    if (options.workspaceAccess) onPhase("hook-probe");
     const hookWarning = options.workspaceAccess
       ? await inspectProjectHooks(this.#paths, options, options.onWarning)
       : undefined;
+    onPhase("conversation");
     const rawFacts = await runAntigravityConversation({
       paths: this.#paths,
       cwd: options.canonicalWorkingDirectory,
@@ -92,6 +128,7 @@ class AntigravityAdapter implements ConsultingAgentAdapter {
       onActivity: options.onProgress,
       onProcessStart: options.onProcessStart,
     });
+    onPhase("validation");
     if (expectedConversationId && rawFacts.conversationId !== expectedConversationId) {
       throw new ConsultingAgentError("conversation-mismatch");
     }
@@ -179,9 +216,14 @@ function decodeContinuation(value: string): string {
   return conversationId;
 }
 
-/** Drop raw diagnostics on every failure path, including preparation and callbacks. */
+/** Keep only fixed reasons and safe facts, including preparation and callback failures. */
 function safeExecutionFailure(error: unknown): ConsultingAgentError {
-  if (error instanceof ConsultingAgentError) return new ConsultingAgentError(error.kind);
+  if (error instanceof ConsultingAgentError) {
+    return new ConsultingAgentError(error.kind, {
+      reason: error.reason,
+      diagnostics: error.diagnostics,
+    });
+  }
   const processKinds: Record<AntigravityProcessError["kind"], ConsultingAgentFailureKind> = {
     missing: "unavailable",
     timeout: "timeout",
@@ -190,7 +232,9 @@ function safeExecutionFailure(error: unknown): ConsultingAgentError {
     protocol: "invalid-response",
     process: "execution",
   };
-  return new ConsultingAgentError(
-    error instanceof AntigravityProcessError ? processKinds[error.kind] : "execution",
-  );
+  if (!(error instanceof AntigravityProcessError)) return new ConsultingAgentError("execution");
+  return new ConsultingAgentError(processKinds[error.kind], {
+    reason: error.reason,
+    diagnostics: { ...error.diagnostics, exitCode: error.exitCode },
+  });
 }

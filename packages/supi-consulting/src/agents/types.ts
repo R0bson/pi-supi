@@ -38,6 +38,6 @@ export interface ConsultingAgentAdapter {
   /** The agent's stable, package-managed empty Consultation Workspace. */
   readonly consultationWorkspace: string;
   discover(options?: { signal?: AbortSignal }): Promise<ConsultingAvailability>;
-  /** Reject with a ConsultingAgentError; raw diagnostics and causes stay inside the adapter. */
+  /** Reject with a ConsultingAgentError and safe facts; raw diagnostics and causes stay inside the adapter. */
   execute(options: ConsultingAgentExecutionOptions): Promise<ConsultationExecutionFacts>;
 }

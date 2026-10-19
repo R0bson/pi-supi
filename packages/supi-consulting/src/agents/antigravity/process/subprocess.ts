@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import type { ConsultingFailureDiagnostics, ConsultingFailureReason } from "../../errors.ts";
 import { buildAntigravityEnvironment } from "./environment.ts";
 import {
   BoundedLineParser,
@@ -6,6 +7,7 @@ import {
   MAX_STDOUT_BYTES,
   MAX_STDOUT_LINE_BYTES,
 } from "./ndjson.ts";
+import { AntigravityResponseError } from "./response-error.ts";
 
 const COMMAND = "agy";
 const TERMINATION_GRACE_MS = 500;
@@ -24,17 +26,27 @@ export class AntigravityProcessError extends Error {
   readonly exitCode: number | null | undefined;
   /** Bounded stderr retained for an in-memory caller, never put in result details. */
   readonly stderr: string | undefined;
+  readonly reason: ConsultingFailureReason | undefined;
+  readonly diagnostics: ConsultingFailureDiagnostics | undefined;
 
   constructor(
     message: string,
     kind: AntigravityProcessError["kind"],
-    options: { cause?: unknown; exitCode?: number | null; stderr?: string } = {},
+    options: {
+      cause?: unknown;
+      exitCode?: number | null;
+      stderr?: string;
+      reason?: ConsultingFailureReason;
+      diagnostics?: ConsultingFailureDiagnostics;
+    } = {},
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "AntigravityProcessError";
     this.kind = kind;
     this.exitCode = options.exitCode;
     this.stderr = options.stderr;
+    this.reason = options.reason;
+    this.diagnostics = options.diagnostics;
   }
 }
 
@@ -125,7 +137,10 @@ export function runBoundedChildProcess(
       } catch (error) {
         terminateAndReject(
           error instanceof Error
-            ? new AntigravityProcessError(error.message, "stream", { cause: error })
+            ? new AntigravityProcessError(error.message, "stream", {
+                cause: error,
+                ...(error instanceof AntigravityResponseError ? { reason: error.reason } : {}),
+              })
             : new AntigravityProcessError("Antigravity stdout exceeded its limits.", "stream"),
         );
       }
@@ -221,6 +236,7 @@ function toProtocolOrProcessError(error: unknown): AntigravityProcessError {
   if (error instanceof AntigravityProcessError) return error;
   return new AntigravityProcessError("Antigravity returned an invalid stream.", "protocol", {
     cause: error,
+    ...(error instanceof AntigravityResponseError ? { reason: error.reason } : {}),
   });
 }
 
