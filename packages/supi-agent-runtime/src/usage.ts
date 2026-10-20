@@ -1,5 +1,5 @@
 import type { Usage } from "@earendil-works/pi-ai";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent";
 
 function addOptional(first: number | undefined, second: number | undefined): number | undefined {
   return first === undefined && second === undefined ? undefined : (first ?? 0) + (second ?? 0);
@@ -35,48 +35,138 @@ export function combineAgentRunUsage(usages: readonly (Usage | undefined)[]): Us
   );
 }
 
-/**
- * Collect every usage-bearing entry owned by the in-memory Agent Run session.
- * This includes assistant turns, tool-result work, non-message usage entries, compaction,
- * branch summaries, and finalized/live messages that have not reached persistence yet.
- */
-export function collectAgentRunUsage(session: AgentSession): Usage | undefined {
-  const knownMessages = new Set<object>();
-  const usages = [
-    ...collectEntryUsage(session, knownMessages),
-    ...collectLiveMessageUsage(session, knownMessages),
-    collectStreamingUsage(session, knownMessages),
-  ];
-  return combineAgentRunUsage(usages) ?? collectStatsUsage(session);
+/** Historical data present before a restored Agent Run starts. */
+export interface AgentRunUsageBaseline {
+  readonly entryIds: ReadonlySet<string>;
+  readonly messages: ReadonlySet<object>;
+  /** Stable keys match projected copies created for native context edits. */
+  readonly messageKeys: ReadonlySet<string>;
+  readonly usage?: Usage;
 }
 
-function collectEntryUsage(session: AgentSession, knownMessages: Set<object>): Usage[] {
-  const usages: Usage[] = [];
+/** Snapshot historical usage before the restored run starts. */
+export function createAgentRunUsageBaseline(session: AgentSession): AgentRunUsageBaseline {
+  const entryIds = new Set<string>();
+  const messages = new Set<object>();
+  const messageKeys = new Set<string>();
   try {
     for (const entry of session.sessionManager.getEntries()) {
-      if (entry.type === "message") {
-        if (isObject(entry.message)) knownMessages.add(entry.message);
-        pushUsage(usages, entry.message);
-      } else if (
-        entry.type === "usage" ||
-        entry.type === "compaction" ||
-        entry.type === "branch_summary"
-      ) {
-        pushUsage(usages, entry);
-      }
+      entryIds.add(entry.id);
+      if (entry.type === "message") addBaselineMessage(entry.message, messages, messageKeys);
+    }
+  } catch {
+    // Continue with the live session snapshot when test doubles omit session entries.
+  }
+  try {
+    for (const message of session.messages) addBaselineMessage(message, messages, messageKeys);
+  } catch {
+    // Usage can still be collected from session entries.
+  }
+  return { entryIds, messages, messageKeys, usage: collectStatsUsage(session) };
+}
+
+/**
+ * Collect billed usage created by this Agent Run. A baseline excludes imported session history.
+ */
+export function collectAgentRunUsage(
+  session: AgentSession,
+  baseline?: AgentRunUsageBaseline,
+): Usage | undefined {
+  const knownMessages = new Set<object>();
+  const knownMessageKeys = new Set(baseline?.messageKeys);
+  const entryUsages = collectEntryUsage(
+    session,
+    knownMessages,
+    knownMessageKeys,
+    baseline?.entryIds,
+  );
+  const usages = [
+    ...entryUsages,
+    ...collectLiveMessageUsage(session, knownMessages, knownMessageKeys, baseline?.messages),
+    collectStreamingUsage(session, knownMessages, knownMessageKeys, baseline?.messages),
+  ];
+  const collected = combineAgentRunUsage(usages);
+  if (collected) return collected;
+  const currentStats = collectStatsUsage(session);
+  return baseline ? subtractUsage(currentStats, baseline.usage) : currentStats;
+}
+
+interface EntryUsageCollector {
+  readonly usages: Usage[];
+  readonly knownMessages: Set<object>;
+  readonly knownMessageKeys: Set<string>;
+  readonly historicalEntryIds?: ReadonlySet<string>;
+}
+
+function collectEntryUsage(
+  session: AgentSession,
+  knownMessages: Set<object>,
+  knownMessageKeys: Set<string>,
+  historicalEntryIds?: ReadonlySet<string>,
+): Usage[] {
+  const collector: EntryUsageCollector = {
+    usages: [],
+    knownMessages,
+    knownMessageKeys,
+    historicalEntryIds,
+  };
+  try {
+    for (const entry of session.sessionManager.getEntries()) {
+      collectEntryUsageItem(entry, collector);
     }
   } catch {
     // Test doubles and older PI versions may not expose session entries.
   }
-  return usages;
+  return collector.usages;
 }
 
-function collectLiveMessageUsage(session: AgentSession, knownMessages: Set<object>): Usage[] {
+function collectEntryUsageItem(entry: SessionEntry, collector: EntryUsageCollector): void {
+  const { historicalEntryIds, knownMessages, knownMessageKeys, usages } = collector;
+  if (entry.type === "message") {
+    if (isObject(entry.message)) knownMessages.add(entry.message);
+    const key = historicalEntryIds ? getMessageKey(entry.message) : undefined;
+    if (key) knownMessageKeys.add(key);
+    if (!historicalEntryIds?.has(entry.id)) pushUsage(usages, entry.message);
+    return;
+  }
+  if (historicalEntryIds?.has(entry.id)) return;
+  if (entry.type === "usage" || entry.type === "compaction" || entry.type === "branch_summary") {
+    pushUsage(usages, entry);
+  }
+}
+
+function addBaselineMessage(
+  message: unknown,
+  messages: Set<object>,
+  messageKeys: Set<string>,
+): void {
+  if (isObject(message)) messages.add(message);
+  const key = getMessageKey(message);
+  if (key) messageKeys.add(key);
+}
+
+function collectLiveMessageUsage(
+  session: AgentSession,
+  knownMessages: Set<object>,
+  knownMessageKeys: Set<string>,
+  historicalMessages?: ReadonlySet<object>,
+): Usage[] {
   const usages: Usage[] = [];
   try {
     for (const message of session.messages) {
-      if (isObject(message) && knownMessages.has(message)) continue;
+      const messageKey = historicalMessages ? getMessageKey(message) : undefined;
+      if (
+        isObject(message) &&
+        (knownMessages.has(message) ||
+          historicalMessages?.has(message) ||
+          (historicalMessages !== undefined &&
+            messageKey !== undefined &&
+            knownMessageKeys.has(messageKey)))
+      ) {
+        continue;
+      }
       if (isObject(message)) knownMessages.add(message);
+      if (historicalMessages !== undefined && messageKey) knownMessageKeys.add(messageKey);
       pushUsage(usages, message);
     }
   } catch {
@@ -88,14 +178,51 @@ function collectLiveMessageUsage(session: AgentSession, knownMessages: Set<objec
 function collectStreamingUsage(
   session: AgentSession,
   knownMessages: Set<object>,
+  knownMessageKeys: Set<string>,
+  historicalMessages?: ReadonlySet<object>,
 ): Usage | undefined {
   try {
     const message = session.agent.state.streamingMessage;
-    if (isObject(message) && !knownMessages.has(message)) return readUsage(message);
+    const messageKey = historicalMessages ? getMessageKey(message) : undefined;
+    if (
+      isObject(message) &&
+      !knownMessages.has(message) &&
+      !historicalMessages?.has(message) &&
+      !(
+        historicalMessages !== undefined &&
+        messageKey !== undefined &&
+        knownMessageKeys.has(messageKey)
+      )
+    ) {
+      return readUsage(message);
+    }
   } catch {
     // Continue with the best-effort stats snapshot.
   }
   return undefined;
+}
+
+function getMessageKey(value: unknown): string | undefined {
+  if (!isObject(value)) return undefined;
+  const message = value as Record<string, unknown>;
+  if (
+    typeof message.role !== "string" ||
+    (typeof message.timestamp !== "number" && typeof message.timestamp !== "string")
+  ) {
+    return undefined;
+  }
+  const usage = normalizeUsage(message.usage);
+  if (!usage) return undefined;
+  return JSON.stringify([
+    message.role,
+    message.timestamp,
+    message.provider,
+    message.model,
+    message.toolCallId,
+    message.toolName,
+    message.stopReason,
+    usage,
+  ]);
 }
 
 function collectStatsUsage(session: AgentSession): Usage | undefined {
@@ -127,6 +254,29 @@ function collectStatsUsage(session: AgentSession): Usage | undefined {
 function pushUsage(usages: Usage[], value: unknown): void {
   const usage = readUsage(value);
   if (usage) usages.push(usage);
+}
+
+function subtractUsage(after: Usage | undefined, before: Usage | undefined): Usage | undefined {
+  if (!after) return undefined;
+  const difference = (next: number, previous: number | undefined) =>
+    Math.max(0, next - (previous ?? 0));
+  const usage: Usage = {
+    input: difference(after.input, before?.input),
+    output: difference(after.output, before?.output),
+    cacheRead: difference(after.cacheRead, before?.cacheRead),
+    cacheWrite: difference(after.cacheWrite, before?.cacheWrite),
+    totalTokens: difference(after.totalTokens, before?.totalTokens),
+    cost: {
+      input: difference(after.cost.input, before?.cost.input),
+      output: difference(after.cost.output, before?.cost.output),
+      cacheRead: difference(after.cost.cacheRead, before?.cost.cacheRead),
+      cacheWrite: difference(after.cost.cacheWrite, before?.cost.cacheWrite),
+      total: difference(after.cost.total, before?.cost.total),
+    },
+  };
+  return usage.input || usage.output || usage.cacheRead || usage.cacheWrite || usage.cost.total
+    ? usage
+    : undefined;
 }
 
 function isObject(value: unknown): value is object {

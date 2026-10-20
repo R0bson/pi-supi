@@ -68,6 +68,16 @@ afterEach(async () => {
 });
 
 describe("registered agent_run rendering boundary", () => {
+  it.each([
+    {},
+    { tasks: [{ id: "first" }] },
+    { tasks: [{ id: "first", new: {} }] },
+    { tasks: [{ id: "next", continue: {} }] },
+  ])("renders partial streaming input %j", async (args) => {
+    const tool = await registeredTool();
+    expect(render(tool.renderCall(args, theme))).toContain("Agent Run");
+  });
+
   it("renders safe activity from the registered run's session events", async () => {
     const tool = await registeredTool();
     installRunDouble({
@@ -92,7 +102,7 @@ describe("registered agent_run rendering boundary", () => {
       "call-1",
       {
         mode: "foreground",
-        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }],
+        tasks: [{ id: "task-1", new: { profile: "explore" }, instructions: "inspect" }],
       },
       undefined,
       (update: unknown) => updates.push(update),
@@ -148,7 +158,7 @@ describe("registered agent_run rendering boundary", () => {
       "call-1",
       {
         mode: "foreground",
-        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }],
+        tasks: [{ id: "task-1", new: { profile: "explore" }, instructions: "inspect" }],
       },
       undefined,
       undefined,
@@ -240,7 +250,9 @@ describe("registered agent_run rendering boundary", () => {
       {
         mode: "foreground",
         sharedContext: "shared context",
-        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect the repository" }],
+        tasks: [
+          { id: "task-1", new: { profile: "explore" }, instructions: "inspect the repository" },
+        ],
       },
       undefined,
       undefined,

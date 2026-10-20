@@ -1,3 +1,4 @@
+import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import { buildAgentRunSchema } from "../../src/tool/agent_run/schema.ts";
 import type { AgentProfile, ProfileCatalogue, ProfileDiagnostic } from "../../src/types.ts";
@@ -14,6 +15,23 @@ function makeProfile(id: string, description = id): AgentProfile {
       instructionScopes: [],
     },
   };
+}
+
+function getNewProfileProperty(schema: unknown): { enum?: string[]; description: string } {
+  const task = (
+    schema as {
+      properties: {
+        tasks: {
+          items: {
+            properties: {
+              new: { properties: { profile: { enum?: string[]; description: string } } };
+            };
+          };
+        };
+      };
+    }
+  ).properties.tasks.items;
+  return task.properties.new.properties.profile;
 }
 
 function makeCatalogue(
@@ -66,7 +84,7 @@ describe("buildAgentRunSchema", () => {
       makeProfile("fix", "Implement a focused code change."),
     ]);
     const schema = JSON.parse(JSON.stringify(buildAgentRunSchema(catalogue)));
-    const profile = schema.properties.tasks.items.properties.profile;
+    const profile = getNewProfileProperty(schema);
 
     expect(profile).toMatchObject({ type: "string", enum: ["fix", "trace"] });
     expect(profile.description).toBe(
@@ -80,7 +98,7 @@ describe("buildAgentRunSchema", () => {
       makeProfile("trace", "  Trace\nrepository\r\ncalls\twithout  changes.  "),
     ]);
     const schema = JSON.parse(JSON.stringify(buildAgentRunSchema(catalogue)));
-    expect(schema.properties.tasks.items.properties.profile.description).toBe(
+    expect(getNewProfileProperty(schema).description).toBe(
       "trace: Trace repository calls without changes.",
     );
   });
@@ -92,7 +110,7 @@ describe("buildAgentRunSchema", () => {
       ),
     );
     const schema = JSON.parse(JSON.stringify(buildAgentRunSchema(catalogue)));
-    const profile = schema.properties.tasks.items.properties.profile;
+    const profile = getNewProfileProperty(schema);
     expect(profile.enum).toHaveLength(32);
     expect(profile.description.split("\n")).toHaveLength(32);
     expect(profile.description.length).toBeLessThanOrEqual(8_543);
@@ -122,11 +140,48 @@ describe("buildAgentRunSchema", () => {
       [{ profileId: "bad", source: "package", code: "invalid-manifest", message: "bad" }],
     );
     const schema = JSON.parse(JSON.stringify(buildAgentRunSchema(catalogue)));
-    expect(schema.properties.tasks.items.properties.profile).toMatchObject({
+    expect(getNewProfileProperty(schema)).toMatchObject({
       type: "string",
       description: expect.stringContaining("no valid profiles"),
     });
     expect(JSON.stringify(schema)).not.toContain("bad");
+  });
+
+  it("accepts exactly one new or continue selector and rejects legacy fields", () => {
+    const schema = buildAgentRunSchema(makeCatalogue([makeProfile("explore")]));
+    expect(
+      Value.Check(schema, {
+        tasks: [{ id: "first", new: { profile: "explore" }, instructions: "inspect" }],
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(schema, {
+        tasks: [{ id: "follow-up", continue: { conversationId: "conv-1" }, instructions: "check" }],
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(schema, {
+        tasks: [{ id: "missing", instructions: "inspect" }],
+      }),
+    ).toBe(false);
+    expect(JSON.stringify(schema)).not.toContain('"anyOf"');
+    expect(
+      Value.Check(schema, {
+        tasks: [{ id: "legacy", profile: "explore", instructions: "inspect" }],
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(schema, {
+        tasks: [
+          {
+            id: "both",
+            new: { profile: "explore" },
+            continue: { conversationId: "conv-1" },
+            instructions: "inspect",
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 
   it("enforces task bounds (1-4 tasks, max ID length, max instructions length)", () => {

@@ -45,6 +45,14 @@ Keep `tasks` and `sharedContext`. Add optional `mode: "background" | "foreground
 - Foreground returns the final Delegation Batch Result and its Usage.
 - Background returns a session-local batch handle, task identifiers, and initial status.
 - The background start result does not report child Usage.
+- Each task uses exactly one selector: `new: { profile }` or `continue: { conversationId }`. A follow-up keeps the saved Profile ID and uses current profile policy.
+- A started run returns its conversation reference in progress and result output. Use `agent_list` to find saved references on the active branch.
+
+### Saved conversations
+
+Each completed foreground `agent_run` result can store a child-context checkpoint in tool-result details. Background work stores its checkpoint only when `agent_result` stores the collection. Collect completed background work before continuing its conversation. Repeated collection does not repeat a checkpoint that Pi has already stored.
+
+Checkpoint records follow the active parent branch. They use Pi's raw session entries and are copied with parent branches and clones. They do not create child session files. Parent session files and exports can include child history. See the [resumable conversation design](resumable-conversations.md) for the full record, branch, and validation contract.
 
 ### `agent_result`
 
@@ -113,7 +121,7 @@ agent_cancel({ batchId })
 - Keep bounded results and accounting state until the containing session closes. Do not impose an independent short result expiry.
 - Retain canceled results for inspection and for collection if their originating branch is active again.
 - Keep full human-only transcripts under the existing runtime retention policy.
-- No handle, active run, or uncollected-result recovery survives session shutdown or restart.
+- Batch handles, active runs, and uncollected results do not survive session shutdown or restart. Saved conversation checkpoints remain in the parent history.
 
 ## Usage accounting
 

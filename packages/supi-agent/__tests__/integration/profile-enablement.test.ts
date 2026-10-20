@@ -58,6 +58,7 @@ function currentTool(pi: ReturnType<typeof createPiMock>) {
 describe("profile enablement at the extension boundary", () => {
   it("preserves an off tool setting when a profile becomes available", async () => {
     const { pi, ctx, agentSettings, profileSettings } = await disabledProfilesSession();
+    expect(getTools(pi).some((tool) => tool.name === "agent_list")).toBe(true);
     const request = { scope: "project" as const, cwd: ctx.cwd };
     await agentSettings.apply({
       ...request,
@@ -82,7 +83,9 @@ describe("profile enablement at the extension boundary", () => {
 
   it("keeps profile choices fixed until reload and rejects calls to disabled profiles", async () => {
     const { pi, ctx, profileSettings, agentDir } = await disabledProfilesSession();
-    const input = { tasks: [{ id: "task", profile: "explore", instructions: "Inspect files." }] };
+    const input = {
+      tasks: [{ id: "task", new: { profile: "explore" }, instructions: "Inspect files." }],
+    };
     await expect(
       currentTool(pi).execute("call", input, undefined, undefined, ctx as never),
     ).rejects.toThrow("No valid Agent Profiles are available");
@@ -101,7 +104,7 @@ describe("profile enablement at the extension boundary", () => {
     expect(JSON.stringify(after.parameters)).not.toContain("explore");
     expect(
       Value.Check(after.parameters as TSchema, {
-        tasks: [{ id: "task", profile: "general", instructions: "Inspect files." }],
+        tasks: [{ id: "task", new: { profile: "general" }, instructions: "Inspect files." }],
       }),
     ).toBe(true);
     await expect(after.execute("call", input, undefined, undefined, ctx as never)).rejects.toThrow(

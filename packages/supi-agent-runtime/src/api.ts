@@ -1,5 +1,6 @@
 /** Public API for @mrclrchtr/supi-agent-runtime. */
 
+export { cloneAgentRunContext } from "./context.ts";
 export type { AgentRunDiagnosticErrorRow } from "./diagnostics.ts";
 export {
   createEarlyCancellationDiagnostics,
@@ -35,6 +36,7 @@ export type {
 } from "./session/transcript-store.ts";
 export { AgentRunTranscriptCapture, AgentRunTranscriptStore } from "./session/transcript-store.ts";
 export type {
+  AgentRunContext,
   AgentRunContinuation,
   AgentRunContinuationContext,
   AgentRunContinuationEvent,

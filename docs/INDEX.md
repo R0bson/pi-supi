@@ -51,6 +51,7 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 ## Package design references
 
 - [Background delegation](../packages/supi-agent/docs/background-delegation.md) — approved execution, completion, cancellation, capacity, and Usage accounting for background Agent Runs.
+- [Resumable Delegation Conversations](../packages/supi-agent/docs/resumable-conversations.md) — reusable child context, parent-owned persistence, branch behavior, and follow-up Agent Runs.
 
 ## Design examples
 

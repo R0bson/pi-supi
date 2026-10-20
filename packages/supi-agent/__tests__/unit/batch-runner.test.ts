@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   configureDebugRegistry,
   getDebugEvents,
@@ -68,7 +68,7 @@ function mockCtx(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
     ui: {} as never,
     mode: "tui",
     hasUI: true,
-    sessionManager: {} as never,
+    sessionManager: SessionManager.inMemory("/repo"),
     abort: () => undefined,
     shutdown: () => undefined,
     isIdle: () => true,
@@ -124,8 +124,8 @@ describe("runDelegationBatch", () => {
       runDelegationBatch(
         {
           tasks: [
-            { id: "t1", profile: "explore", instructions: "x" },
-            { id: "t1", profile: "explore", instructions: "y" },
+            { id: "t1", new: { profile: "explore" }, instructions: "x" },
+            { id: "t1", new: { profile: "explore" }, instructions: "y" },
           ],
         },
         catalogue,
@@ -138,11 +138,11 @@ describe("runDelegationBatch", () => {
     const catalogue = makeCatalogue(["explore"]);
     await expect(
       runDelegationBatch(
-        { tasks: [{ id: "t1", profile: "unknown", instructions: "x" }] },
+        { tasks: [{ id: "t1", new: { profile: "unknown" }, instructions: "x" }] },
         catalogue,
         mockCtx(),
       ),
-    ).rejects.toThrow("Unknown profile");
+    ).rejects.toThrow("unknown or unavailable");
   });
 
   it("rejects mutation-capable multi-task batches", async () => {
@@ -159,8 +159,8 @@ describe("runDelegationBatch", () => {
       runDelegationBatch(
         {
           tasks: [
-            { id: "t1", profile: "impl", instructions: "x" },
-            { id: "t2", profile: "impl", instructions: "y" },
+            { id: "t1", new: { profile: "impl" }, instructions: "x" },
+            { id: "t2", new: { profile: "impl" }, instructions: "y" },
           ],
         },
         catalogue,
@@ -183,8 +183,8 @@ describe("runDelegationBatch", () => {
       runDelegationBatch(
         {
           tasks: [
-            { id: "t1", profile: "explore", instructions: "inspect" },
-            { id: "t2", profile: "impl", instructions: "edit" },
+            { id: "t1", new: { profile: "explore" }, instructions: "inspect" },
+            { id: "t2", new: { profile: "impl" }, instructions: "edit" },
           ],
         },
         catalogue,
@@ -196,7 +196,7 @@ describe("runDelegationBatch", () => {
   it("runs a read-only single-task batch and returns results", async () => {
     const catalogue = makeCatalogue(["explore"]);
     const { results } = await runDelegationBatch(
-      { tasks: [{ id: "t1", profile: "explore", instructions: "do work" }] },
+      { tasks: [{ id: "t1", new: { profile: "explore" }, instructions: "do work" }] },
       catalogue,
       mockCtx(),
     );
@@ -211,7 +211,7 @@ describe("runDelegationBatch", () => {
     configureDebugRegistry({ enabled: true });
 
     await runDelegationBatch(
-      { tasks: [{ id: "t1", profile: "explore", instructions: "do work" }] },
+      { tasks: [{ id: "t1", new: { profile: "explore" }, instructions: "do work" }] },
       makeCatalogue(["explore"]),
       mockCtx(),
     );
@@ -241,8 +241,8 @@ describe("runDelegationBatch", () => {
     const { results } = await runDelegationBatch(
       {
         tasks: [
-          { id: "t1", profile: "explore", instructions: "a" },
-          { id: "t2", profile: "explore", instructions: "b" },
+          { id: "t1", new: { profile: "explore" }, instructions: "a" },
+          { id: "t2", new: { profile: "explore" }, instructions: "b" },
         ],
       },
       catalogue,
@@ -271,7 +271,7 @@ describe("runDelegationBatch", () => {
 
     const catalogue = makeCatalogue(["explore"]);
     const { results } = await runDelegationBatch(
-      { tasks: [{ id: "t1", profile: "explore", instructions: "fail" }] },
+      { tasks: [{ id: "t1", new: { profile: "explore" }, instructions: "fail" }] },
       catalogue,
       mockCtx(),
     );
@@ -314,7 +314,7 @@ describe("runDelegationBatch", () => {
     }));
 
     await runDelegationBatch(
-      { tasks: [{ id: "t1", profile: "explore", instructions: "finish" }] },
+      { tasks: [{ id: "t1", new: { profile: "explore" }, instructions: "finish" }] },
       makeCatalogue(["explore"]),
       mockCtx(),
     );
@@ -353,10 +353,10 @@ describe("runDelegationBatch", () => {
     const { results } = await runDelegationBatch(
       {
         tasks: [
-          { id: "t1", profile: "explore", instructions: "a" },
-          { id: "t2", profile: "explore", instructions: "b" },
-          { id: "t3", profile: "explore", instructions: "c" },
-          { id: "t4", profile: "explore", instructions: "d" },
+          { id: "t1", new: { profile: "explore" }, instructions: "a" },
+          { id: "t2", new: { profile: "explore" }, instructions: "b" },
+          { id: "t3", new: { profile: "explore" }, instructions: "c" },
+          { id: "t4", new: { profile: "explore" }, instructions: "d" },
         ],
       },
       makeCatalogue(["explore"]),
@@ -407,7 +407,7 @@ describe("runDelegationBatch", () => {
     );
 
     const { results } = await runDelegationBatch(
-      { tasks: [{ id: "t1", profile: "explore", instructions: "finish" }] },
+      { tasks: [{ id: "t1", new: { profile: "explore" }, instructions: "finish" }] },
       makeCatalogue(["explore"]),
       mockCtx(),
     );

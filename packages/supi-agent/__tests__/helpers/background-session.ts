@@ -1,11 +1,14 @@
 import type { Usage } from "@earendil-works/pi-ai";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { type AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
 
 /** A controlled Pi SDK session, without dependencies on private SuPi test helpers. */
-export function controlledSession(tools: string[], defaultUsage: Usage) {
+export function controlledSession(
+  tools: string[],
+  defaultUsage: Usage,
+  manager: SessionManager = SessionManager.inMemory(process.cwd()),
+) {
   const listeners = new Set<(event: { type: string; [key: string]: unknown }) => void>();
-  const entries: unknown[] = [];
   let active = true;
   let releasePrompt: (() => void) | undefined;
   let rejectPrompt: ((error: Error) => void) | undefined;
@@ -32,13 +35,14 @@ export function controlledSession(tools: string[], defaultUsage: Usage) {
     agent: { waitForIdle: vi.fn(async () => undefined), state: {} },
     extensionRunner: { invalidate: () => extensionRuntime.invalidate() },
     messages: [] as unknown[],
-    sessionManager: { getEntries: () => entries },
+    sessionManager: manager,
     bindExtensions: vi.fn(async () => undefined),
     subscribe: (listener: (event: { type: string; [key: string]: unknown }) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    prompt: vi.fn<AgentSession["prompt"]>(async (_prompt, options) => {
+    prompt: vi.fn<AgentSession["prompt"]>(async (prompt, options) => {
+      manager.appendMessage({ role: "user", content: prompt, timestamp: Date.now() });
       session.isStreaming = true;
       options?.preflightResult?.("started");
       try {
@@ -81,15 +85,24 @@ export function controlledSession(tools: string[], defaultUsage: Usage) {
       session.dispose();
     }),
   };
-  const bill = (usage = defaultUsage) =>
-    entries.push({ type: "message", message: { role: "assistant", usage } });
+  const bill = (text = "", usage = defaultUsage) =>
+    manager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text }],
+      api: "openai-completions",
+      provider: "test",
+      model: "model",
+      usage,
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
   return {
     session,
     runtime,
     extensionRuntime,
     bill,
     finish(text = "Child result", usage = defaultUsage) {
-      bill(usage);
+      bill(text, usage);
       session.getLastAssistantText.mockReturnValue(text);
       releasePrompt?.();
     },

@@ -13,7 +13,7 @@ The separation of one Agent Run's conversation and loaded PI resources from its 
 _Avoid_: Sandbox, read-only environment, process isolation
 
 **Agent Session Inputs**:
-The caller-owned cwd, model, provider authority, thinking level, tools, custom tools, resources, and settings from which the runtime creates an Agent Run. The caller owns resource policy; the runtime owns session mechanics.
+The caller-owned cwd, model, provider authority, thinking level, tools, custom tools, resources, settings, and starting conversation context from which the runtime creates an Agent Run. The caller owns resource policy; the runtime owns session mechanics.
 _Avoid_: Runtime policy, child configuration, session adapter
 
 **Provider Authority**:
@@ -21,7 +21,7 @@ The caller-owned provider, credential, and model-resolution authority used to ex
 _Avoid_: API key, model configuration, runtime policy
 
 **Agent Run Outcome**:
-The terminal success, failure, cancellation, or timeout result of one Agent Run, including all model usage billed within its owned session and bounded diagnostics.
+The terminal success, failure, cancellation, or timeout result of one Agent Run, including all model usage billed during that execution and bounded diagnostics.
 _Avoid_: Batch result, tool result, agent response
 
 **Agent Run Registry**:

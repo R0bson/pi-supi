@@ -10,11 +10,13 @@ import {
   startRegisteredAgentRun,
 } from "@mrclrchtr/supi-agent-runtime/api";
 import { toAgentToolNames } from "../../capabilities.ts";
+import { createDelegationCheckpoint } from "../../delegation/checkpoints.ts";
 import type { AgentProfile } from "../../types.ts";
 import type { ResolvedTask } from "./batch-preflight.ts";
 import type { BatchTaskProgress, BatchTaskResult } from "./batch-types.ts";
 import type { AgentConversationView, ConversationTaskMetadata } from "./conversation-view.ts";
 import { buildConversationView } from "./conversation-view.ts";
+import { buildChildPrompt } from "./prompt.ts";
 import {
   AgentRunTelemetry,
   failureCodeFromOutcome,
@@ -145,10 +147,8 @@ export function startBatchTask(options: StartBatchTaskOptions): StartedBatchTask
 
   const handle = startRegisteredAgentRun<string>({
     inputs: task.inputs,
-    prompt: buildChildPrompt({
-      ...(params.sharedContext === undefined ? {} : { sharedContext: params.sharedContext }),
-      instructions: task.instructions,
-    }),
+    prompt: buildChildPrompt(task, params.sharedContext),
+    captureContext: true,
     ...(options.signal ? { signal: options.signal } : {}),
     ...(task.timeoutMs === undefined ? {} : { timeoutMs: task.timeoutMs }),
     readinessCheck: makeReadinessCheck(task.profile),
@@ -197,6 +197,8 @@ export function startBatchTask(options: StartBatchTaskOptions): StartedBatchTask
       publishProgress({
         taskId: task.taskId,
         profileId: task.profileId,
+        conversationId: task.conversationId,
+        conversationLabel: task.conversationLabel,
         status: progress.status,
         turns: progress.turns,
         toolUses: progress.toolUses,
@@ -276,6 +278,16 @@ function finalizeTaskOutcome(
 
   const usage = outcome.usage;
   const rawText = outcome.kind === "success" ? outcome.value : "";
+  const checkpoint = createDelegationCheckpoint({
+    context: outcome.context,
+    baseContext: context.task.baseContext,
+    conversationId: context.task.conversationId,
+    label: context.task.conversationLabel,
+    profileId: context.task.profileId,
+    parentCheckpointId: context.task.parentCheckpointId,
+    runStatus: outcome.kind === "success" ? "completed" : outcome.kind,
+    ...(failureCode ? { failureCode } : {}),
+  });
   const modelText = capModelText(rawText);
   const humanText = capHumanText(rawText);
   const humanTruncated = humanTextOverflow(rawText) > 0;
@@ -283,6 +295,9 @@ function finalizeTaskOutcome(
   const result: BatchTaskResult = {
     taskId: context.task.taskId,
     profileId: context.task.profileId,
+    conversationId: context.task.conversationId,
+    conversationLabel: context.task.conversationLabel,
+    ...(checkpoint ? { checkpoint } : {}),
     status,
     finalText: modelText,
     finalTextFull: humanText,
@@ -311,6 +326,8 @@ function finalizeTaskOutcome(
   context.publishProgress({
     taskId: context.task.taskId,
     profileId: context.task.profileId,
+    conversationId: context.task.conversationId,
+    conversationLabel: context.task.conversationLabel,
     status,
     turns: result.turns,
     toolUses: result.toolUses,
@@ -325,6 +342,8 @@ function finalizeRejectedTask(context: FinalizeContext): BatchTaskResult {
   const result: BatchTaskResult = {
     taskId: context.task.taskId,
     profileId: context.task.profileId,
+    conversationId: context.task.conversationId,
+    conversationLabel: context.task.conversationLabel,
     status: "failed",
     failureCode: "unexpected-runner-failure",
     turns: 0,
@@ -340,6 +359,8 @@ function finalizeRejectedTask(context: FinalizeContext): BatchTaskResult {
   context.publishProgress({
     taskId: context.task.taskId,
     profileId: context.task.profileId,
+    conversationId: context.task.conversationId,
+    conversationLabel: context.task.conversationLabel,
     status: "failed",
     turns: 0,
     toolUses: 0,
@@ -359,11 +380,6 @@ function makeReadinessCheck(profile: AgentProfile): (session: AgentRunSessionVie
     if (required.length === 0) return true;
     return required.every((name) => activeNames.includes(name));
   };
-}
-
-function buildChildPrompt(input: { sharedContext?: string; instructions: string }): string {
-  if (!input.sharedContext?.trim()) return input.instructions;
-  return `${input.sharedContext.trim()}\n\n${input.instructions}`;
 }
 
 function emptyConversationView(

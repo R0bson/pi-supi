@@ -18,7 +18,7 @@ import { controlledSession } from "./background-session.ts";
 
 export const task = (id = "one", profile = "explore") => ({
   id,
-  profile,
+  new: { profile },
   instructions: `Inspect ${id} module.`,
 });
 export const usage: Usage = {
@@ -38,7 +38,7 @@ interface InvocationOptions {
 /** Controlled SDK sessions and parent turn boundaries; all SuPi runtime code remains real. */
 export async function backgroundHarness(
   sdk: { createAgentSession: Mock; createAgentSessionRuntime: Mock },
-  options: { timeoutMinutes?: number } = {},
+  options: { timeoutMinutes?: number; persistentParent?: boolean } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), "supi-background-"));
   const agentDir = join(directory, "agent");
@@ -51,6 +51,9 @@ export async function backgroundHarness(
       JSON.stringify({ timeoutMinutes: options.timeoutMinutes }),
     );
   }
+  const parentManager = options.persistentParent
+    ? SessionManager.create(directory, join(directory, "sessions"))
+    : SessionManager.inMemory(directory);
   const children: ReturnType<typeof controlledSession>[] = [];
   let startup: ReturnType<typeof startupGate> | undefined;
   sdk.createAgentSession.mockImplementation(async (inputs) => {
@@ -60,7 +63,7 @@ export async function backgroundHarness(
       gate.enter();
       await gate.ready;
     }
-    const child = controlledSession(inputs.tools, usage);
+    const child = controlledSession(inputs.tools, usage, inputs.sessionManager);
     children.push(child);
     return { session: child.session, extensionsResult: { runtime: child.extensionRuntime } };
   });
@@ -71,7 +74,7 @@ export async function backgroundHarness(
     return child.runtime;
   });
   const pi = createPiMock();
-  let ctx = parentContext(directory);
+  let ctx = parentContext(directory, parentManager);
   let aborted = false;
   let turnsStarted = 0;
   const queued: Record<string, unknown>[] = [];
@@ -90,6 +93,9 @@ export async function backgroundHarness(
     endTurn: turns.endTurn,
     get ctx() {
       return ctx;
+    },
+    get agentDir() {
+      return agentDir;
     },
     get manager() {
       return ctx.sessionManager as SessionManager;
@@ -138,8 +144,32 @@ export async function backgroundHarness(
     async replaceSession() {
       await pi.emit("session_shutdown", { type: "session_shutdown" }, ctx);
       queued.length = 0;
-      ctx = parentContext(join(directory, "replacement"));
+      const replacementCwd = join(directory, "replacement");
+      ctx = parentContext(replacementCwd, SessionManager.inMemory(replacementCwd));
       await pi.emit("session_start", { type: "session_start", reason: "switch" }, ctx);
+    },
+    async reopenParent() {
+      const previous = ctx.sessionManager as SessionManager;
+      const entries = previous.getEntries();
+      const leafId = previous.getLeafId();
+      const cwd = ctx.cwd;
+      const sessionFile = previous.getSessionFile();
+      await pi.emit("session_shutdown", { type: "session_shutdown" }, ctx);
+      queued.length = 0;
+      const manager =
+        options.persistentParent && sessionFile
+          ? SessionManager.open(sessionFile, undefined, cwd)
+          : SessionManager.inMemory(cwd, undefined, entries);
+      if (!(options.persistentParent && sessionFile) && leafId !== null) manager.branch(leafId);
+      ctx = parentContext(cwd, manager);
+      await pi.emit("session_start", { type: "session_start", reason: "resume" }, ctx);
+    },
+    async openParent(manager: SessionManager) {
+      const cwd = ctx.cwd;
+      await pi.emit("session_shutdown", { type: "session_shutdown" }, ctx);
+      queued.length = 0;
+      ctx = parentContext(cwd, manager);
+      await pi.emit("session_start", { type: "session_start", reason: "resume" }, ctx);
     },
     async close() {
       await pi.emit("session_shutdown", { type: "session_shutdown" }, ctx);
@@ -148,12 +178,12 @@ export async function backgroundHarness(
   };
 }
 
-function parentContext(cwd: string): ExtensionContext {
+function parentContext(cwd: string, manager: SessionManager): ExtensionContext {
   const base = context();
   const ctx = {
     ...base,
     cwd,
-    sessionManager: SessionManager.inMemory(cwd),
+    sessionManager: manager,
     signal: undefined as AbortSignal | undefined,
     isIdle: () => !ctx.signal,
     modelRegistry: {

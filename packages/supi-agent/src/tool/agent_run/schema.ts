@@ -28,21 +28,41 @@ export function buildAgentRunSchema(catalogue: ProfileCatalogue): TSchema {
           description: "Profile ID (no valid profiles available)",
         });
 
+  const commonTaskProperties = {
+    id: Type.String({
+      minLength: 1,
+      maxLength: MAX_TASK_ID_LENGTH,
+      description: "Unique task identifier for this batch.",
+    }),
+    instructions: Type.String({
+      minLength: 1,
+      maxLength: MAX_INSTRUCTIONS_CHARS,
+      description: "New instructions for this Agent Run.",
+    }),
+  };
   const taskSchema = Type.Object(
     {
-      id: Type.String({
-        minLength: 1,
-        maxLength: MAX_TASK_ID_LENGTH,
-        description: "Unique task identifier for this batch.",
-      }),
-      profile: profileEnum,
-      instructions: Type.String({
-        minLength: 1,
-        maxLength: MAX_INSTRUCTIONS_CHARS,
-        description: "Self-contained task instructions.",
-      }),
+      ...commonTaskProperties,
+      new: Type.Optional(Type.Object({ profile: profileEnum }, { additionalProperties: false })),
+      continue: Type.Optional(
+        Type.Object(
+          {
+            conversationId: Type.String({
+              minLength: 1,
+              maxLength: 128,
+              description: "Conversation reference returned by agent_run or agent_list.",
+            }),
+          },
+          { additionalProperties: false },
+        ),
+      ),
     },
-    { additionalProperties: false },
+    {
+      additionalProperties: false,
+      minProperties: 3,
+      maxProperties: 3,
+      description: "Select exactly one: new conversation or follow-up to a saved conversation.",
+    },
   );
 
   return Type.Object(
@@ -50,7 +70,7 @@ export function buildAgentRunSchema(catalogue: ProfileCatalogue): TSchema {
       tasks: Type.Array(taskSchema, {
         minItems: 1,
         maxItems: MAX_TASKS,
-        description: "One to four independent Delegation Tasks.",
+        description: "One to four independent Delegation Tasks or Follow-Ups.",
       }),
       mode: Type.Optional(
         StringEnum(["background", "foreground"], {
@@ -61,7 +81,7 @@ export function buildAgentRunSchema(catalogue: ProfileCatalogue): TSchema {
       sharedContext: Type.Optional(
         Type.String({
           maxLength: MAX_SHARED_CONTEXT_CHARS,
-          description: "Optional context copied to every child Agent Run.",
+          description: "Optional new context copied to every child Agent Run.",
         }),
       ),
     },
@@ -69,8 +89,12 @@ export function buildAgentRunSchema(catalogue: ProfileCatalogue): TSchema {
   );
 }
 
+export type AgentRunTaskInput =
+  | { id: string; new: { profile: string }; instructions: string }
+  | { id: string; continue: { conversationId: string }; instructions: string };
+
 export type AgentRunToolParams = {
-  tasks: Array<{ id: string; profile: string; instructions: string }>;
+  tasks: AgentRunTaskInput[];
   sharedContext?: string;
   mode?: "background" | "foreground";
 };

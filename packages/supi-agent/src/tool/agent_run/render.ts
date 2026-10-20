@@ -104,10 +104,10 @@ function batchSummary(tasks: readonly BatchTaskResult[], usage: Usage | undefine
 }
 
 function taskHeading(
-  task: Pick<BatchTaskResult, "taskId" | "profileId" | "status" | "failureCode">,
+  task: Pick<BatchTaskResult, "taskId" | "profileId" | "status" | "failureCode" | "conversationId">,
   theme: Theme,
 ): string {
-  return `${statusColor(task.status, theme)} ${theme.fg("accent", task.taskId)} (${task.profileId}) — ${statusLabel(task.status, task.failureCode)}`;
+  return `${statusColor(task.status, theme)} ${theme.fg("accent", task.taskId)} (${task.profileId}) — ${statusLabel(task.status, task.failureCode)} · conversation ${task.conversationId}`;
 }
 
 function formatTaskMetrics(
@@ -148,10 +148,22 @@ function errorMessage(text: string | undefined, expanded: boolean): string | und
 
 export function renderCall(args: unknown, theme: Theme): Text {
   const a = (args ?? {}) as {
-    tasks?: Array<{ id: string; profile: string }>;
+    tasks?: Array<{
+      id?: string;
+      new?: { profile?: string };
+      continue?: { conversationId?: string };
+    }>;
     sharedContext?: string;
   };
-  const taskIds = a.tasks?.map((task) => `${task.id}:${task.profile}`).join(", ") ?? "";
+  const taskIds =
+    a.tasks
+      ?.map((task) => {
+        const id = task?.id ?? "…";
+        if (task?.new) return `${id}:new(${task.new.profile ?? "…"})`;
+        if (task?.continue) return `${id}:continue(${task.continue.conversationId ?? "…"})`;
+        return id;
+      })
+      .join(", ") ?? "";
   const label = a.tasks?.length ? `${a.tasks.length} task${a.tasks.length > 1 ? "s" : ""}` : "";
   let content = theme.fg("toolTitle", "Agent Run");
   if (label) content += ` ${theme.fg("accent", label)}`;
@@ -210,7 +222,11 @@ export function renderResult(
 // ── Partial ──────────────────────────────────────────────────────
 
 function formatLiveTask(task: BatchTaskProgress, theme: Theme, expanded: boolean): string {
-  const parts = [statusLabel(task.status), formatTaskMetrics(task)];
+  const parts = [
+    statusLabel(task.status),
+    formatTaskMetrics(task),
+    `conversation ${task.conversationId}`,
+  ];
   const activity = expanded ? task.recentActivity?.join(" · ") : task.recentActivity?.at(-1);
   if (activity) parts.push(`activity: ${activity}`);
   const detail = `${task.taskId} (${task.profileId}) · ${parts.join(" · ")}`;

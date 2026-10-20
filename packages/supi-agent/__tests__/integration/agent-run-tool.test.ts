@@ -66,6 +66,8 @@ describe("registered agent_run boundary", () => {
           items: {
             properties: {
               instructions: { maxLength: number };
+              new?: unknown;
+              continue?: unknown;
             };
           };
         };
@@ -73,6 +75,8 @@ describe("registered agent_run boundary", () => {
     };
 
     expect(schema.properties.tasks.items.properties.instructions.maxLength).toBe(16_000);
+    expect(schema.properties.tasks.items.properties.new).toBeDefined();
+    expect(schema.properties.tasks.items.properties.continue).toBeDefined();
   });
 
   it("rejects invalid input before starting a batch", async () => {
@@ -81,7 +85,7 @@ describe("registered agent_run boundary", () => {
       tool.execute(
         "call-1",
         {
-          tasks: [{ id: "task-1", profile: "explore", instructions: "x".repeat(16_001) }],
+          tasks: [{ id: "task-1", new: { profile: "explore" }, instructions: "x".repeat(16_001) }],
         },
         undefined,
         undefined,
@@ -97,7 +101,7 @@ describe("registered agent_run boundary", () => {
       "call-1",
       {
         mode: "foreground",
-        tasks: [{ id: "task-1", profile: "explore", instructions: "inspect" }],
+        tasks: [{ id: "task-1", new: { profile: "explore" }, instructions: "inspect" }],
       },
       undefined,
       undefined,

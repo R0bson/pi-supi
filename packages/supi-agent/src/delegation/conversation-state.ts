@@ -1,0 +1,205 @@
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { BatchTaskProgress, BatchTaskResult } from "../tool/agent_run/batch-types.ts";
+import { AGENT_RESULT_TOOL_NAME } from "../tool/names.ts";
+import type { DelegationCheckpoint } from "./checkpoints.ts";
+import { readSavedDelegationConversations } from "./checkpoints.ts";
+import type { ManagedBatch } from "./controller.ts";
+
+function isTerminalStatus(status: BatchTaskProgress["status"]): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "canceled" || status === "timeout"
+  );
+}
+
+/** Own live conversation locks and one-time background checkpoint payload claims. */
+export class DelegationConversationState {
+  readonly #checkpointClaims = new Map<string, string>();
+
+  /** Reconcile prepared checkpoint payloads with data stored on the active raw branch. */
+  reconcile(branch: readonly SessionEntry[], releaseUnstored = false): void {
+    const stored = readSavedDelegationConversations(branch).checkpointIds;
+    for (const [checkpointId, callId] of this.#checkpointClaims) {
+      if (stored.has(checkpointId) || releaseUnstored || hasToolResult(branch, callId)) {
+        this.#checkpointClaims.delete(checkpointId);
+      }
+    }
+  }
+
+  /** Omit payloads already stored or claimed by another concurrent collection. */
+  prepareCheckpointTasks(
+    callId: string,
+    batch: ManagedBatch,
+    branch: readonly SessionEntry[],
+  ): BatchTaskResult[] {
+    this.reconcile(branch);
+    const stored = readSavedDelegationConversations(branch).checkpointIds;
+    return batch.handle.snapshot().results.map((task) => {
+      const checkpoint = task.checkpoint as DelegationCheckpoint | undefined;
+      if (!checkpoint) return task;
+      if (
+        stored.has(checkpoint.checkpointId) ||
+        this.#checkpointClaims.has(checkpoint.checkpointId)
+      ) {
+        const { checkpoint: _checkpoint, ...withoutCheckpoint } = task;
+        return withoutCheckpoint;
+      }
+      this.#checkpointClaims.set(checkpoint.checkpointId, callId);
+      return task;
+    });
+  }
+
+  /** Report busy and pending-collection runs without exposing child output. */
+  activity(
+    batches: Iterable<ManagedBatch>,
+    branch: readonly SessionEntry[],
+    isOnBranch: (batch: ManagedBatch) => boolean,
+  ): ReadonlyMap<
+    string,
+    { status: "busy" | "pending-collection"; label: string; profileId: string }
+  > {
+    const activity = new Map<
+      string,
+      { status: "busy" | "pending-collection"; label: string; profileId: string }
+    >();
+    for (const batch of batches) {
+      addBatchActivity(activity, batch, branch, !batch.launchId || isOnBranch(batch));
+    }
+    return activity;
+  }
+
+  /** Reject conflicts before the controller starts any part of a batch. */
+  assertAvailable(
+    targets: readonly { taskId: string; conversationId: string }[],
+    batches: Iterable<ManagedBatch>,
+    branch: readonly SessionEntry[],
+    isOnBranch: (batch: ManagedBatch) => boolean,
+  ): void {
+    const activeBatches = [...batches];
+    for (const target of targets) {
+      for (const batch of activeBatches) {
+        const priorTaskId = [...batch.taskConversations].find(
+          ([, conversationId]) => conversationId === target.conversationId,
+        )?.[0];
+        if (!priorTaskId) continue;
+        const progress = batch.handle.progress().tasks.find((task) => task.taskId === priorTaskId);
+        if (progress) {
+          assertTaskAvailable({
+            conversationId: target.conversationId,
+            batch,
+            taskId: priorTaskId,
+            progress,
+            branch,
+            onBranch: !batch.launchId || isOnBranch(batch),
+          });
+        }
+      }
+    }
+  }
+}
+
+function addBatchActivity(
+  activity: Map<
+    string,
+    { status: "busy" | "pending-collection"; label: string; profileId: string }
+  >,
+  batch: ManagedBatch,
+  branch: readonly SessionEntry[],
+  onBranch: boolean,
+): void {
+  const progress = new Map(batch.handle.progress().tasks.map((task) => [task.taskId, task]));
+  for (const [taskId, conversationId] of batch.taskConversations) {
+    const task = progress.get(taskId);
+    if (!task) continue;
+    const liveDetails = { label: task.conversationLabel, profileId: task.profileId };
+    if (!isTerminalStatus(task.status)) {
+      activity.set(conversationId, { status: "busy", ...liveDetails });
+    } else if (onBranch && hasPendingCollection(batch, taskId, branch)) {
+      activity.set(conversationId, { status: "pending-collection", ...liveDetails });
+    } else if (onBranch && hasUnstoredForegroundResult(batch, branch)) {
+      activity.set(conversationId, { status: "busy", ...liveDetails });
+    }
+  }
+}
+
+function assertTaskAvailable(options: {
+  readonly conversationId: string;
+  readonly batch: ManagedBatch;
+  readonly taskId: string;
+  readonly progress: BatchTaskProgress;
+  readonly branch: readonly SessionEntry[];
+  readonly onBranch: boolean;
+}): void {
+  const { conversationId, batch, taskId, progress, branch, onBranch } = options;
+  if (!isTerminalStatus(progress.status)) {
+    throw new Error(`Conversation "${conversationId}" already has an active Agent Run.`);
+  }
+  if (!onBranch) return;
+  if (hasPendingCollection(batch, taskId, branch)) {
+    throw new Error(
+      `Conversation "${conversationId}" has completed background work. Collect it with agent_result before continuing.`,
+    );
+  }
+  if (batch.mode === "foreground" && !hasToolResult(branch, batch.callId)) {
+    throw new Error(
+      `Conversation "${conversationId}" has an Agent Run result that is not stored yet.`,
+    );
+  }
+}
+
+function hasPendingCollection(
+  batch: ManagedBatch,
+  taskId: string,
+  branch: readonly SessionEntry[],
+): boolean {
+  if (batch.mode !== "background") return false;
+  const collected = branch.some((entry) => {
+    const collection = getSuccessfulCollection(entry);
+    return collection?.batchId === batch.handle.batchId && collection.taskIds.includes(taskId);
+  });
+  if (!collected) return true;
+  const checkpoint = batch.handle
+    .snapshot()
+    .results.find((task) => task.taskId === taskId)?.checkpoint;
+  if (!checkpoint) return false;
+  return !readSavedDelegationConversations(branch).checkpointIds.has(checkpoint.checkpointId);
+}
+
+function hasUnstoredForegroundResult(
+  batch: ManagedBatch,
+  branch: readonly SessionEntry[],
+): boolean {
+  return batch.mode === "foreground" && !hasToolResult(branch, batch.callId);
+}
+
+function hasToolResult(branch: readonly SessionEntry[], callId: string): boolean {
+  return branch.some(
+    (entry) =>
+      entry.type === "message" &&
+      entry.message.role === "toolResult" &&
+      entry.message.toolCallId === callId,
+  );
+}
+
+/** Read delivered result identities, independently of whether their Usage was reported. */
+export function getSuccessfulCollection(
+  entry: SessionEntry,
+): { batchId: string; taskIds: string[] } | undefined {
+  if (
+    entry.type !== "message" ||
+    entry.message.role !== "toolResult" ||
+    entry.message.toolName !== AGENT_RESULT_TOOL_NAME ||
+    entry.message.isError
+  ) {
+    return undefined;
+  }
+  const details = entry.message.details as
+    | { batchId?: unknown; tasks?: ({ taskId?: unknown } | null)[] }
+    | undefined;
+  if (typeof details?.batchId !== "string" || !Array.isArray(details.tasks)) return undefined;
+  return {
+    batchId: details.batchId,
+    taskIds: details.tasks.flatMap((task) =>
+      typeof task?.taskId === "string" ? [task.taskId] : [],
+    ),
+  };
+}

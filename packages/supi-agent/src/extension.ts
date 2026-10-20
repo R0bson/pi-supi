@@ -6,6 +6,7 @@ import { agentProfilePages } from "./profile-pages.ts";
 import { registerProfileSettings } from "./profile-settings.ts";
 import { agentProfileCatalogueStore } from "./session.ts";
 import { registerAgentCancelTool } from "./tool/agent_cancel/register.ts";
+import { registerAgentListTool } from "./tool/agent_list/register.ts";
 import { registerAgentResultTool } from "./tool/agent_result/register.ts";
 import { buildCompletionNotice } from "./tool/agent_result/result.ts";
 import { registerAgentRunTool } from "./tool/agent_run/register.ts";
@@ -43,6 +44,7 @@ export default function agentExtension(pi: ExtensionAPI): void {
       });
     });
     registerAgentRunTool(pi, controller);
+    registerAgentListTool(pi, controller);
     registerAgentResultTool(pi, controller);
     registerAgentCancelTool(pi, controller);
     syncAgentRunTool(pi, ctx.cwd);

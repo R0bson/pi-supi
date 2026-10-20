@@ -24,7 +24,7 @@ export function formatModelResult(
   fullOutputPath?: string;
 } {
   const sections: AggregateSection[] = results.map((task) => {
-    const header = `## ${task.taskId} (profile: ${task.profileId}) — ${task.status}`;
+    const header = `## ${task.taskId} (profile: ${task.profileId}) — ${task.status}\nConversation: ${task.conversationId}`;
     if (task.status === "completed") {
       return { overhead: header, body: task.finalText ?? "(no output)" };
     }
@@ -48,10 +48,12 @@ export function buildBackgroundStartResult(
         type: "text",
         text: `Background batch ${handle.batchId} started.\n${handle
           .progress()
-          .tasks.map((task) => `${task.taskId}: ${task.status}`)
+          .tasks.map(
+            (task) => `${task.taskId}: ${task.status} · conversation ${task.conversationId}`,
+          )
           .join(
             "\n",
-          )}\nContinue independent work. Completion notices identify ready tasks. Collect with agent_result; do not poll. Use wait: true when no independent work remains.`,
+          )}\nContinue independent work. Completion notices identify ready tasks. Collect with agent_result before continuing a completed conversation; do not poll. Use wait: true when no independent work remains.`,
       },
     ],
     details: { mode: "background", batchId: handle.batchId, ...handle.progress() },

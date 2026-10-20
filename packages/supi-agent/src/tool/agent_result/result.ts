@@ -6,8 +6,10 @@ import { AGENT_COMPLETION_MESSAGE_TYPE } from "../names.ts";
 /** Build a bounded snapshot with terminal results and pending status. */
 export function buildCollectedResult(
   handle: DelegationBatchHandle,
+  results?: readonly BatchTaskResult[],
 ): AgentToolResult<Record<string, unknown>> {
-  const outcome = handle.snapshot();
+  const snapshot = handle.snapshot();
+  const outcome = results ? { ...snapshot, results: [...results] } : snapshot;
   const pending = handle
     .progress()
     .tasks.filter((task) => !outcome.results.some((ready) => ready.taskId === task.taskId));

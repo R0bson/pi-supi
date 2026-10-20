@@ -33,6 +33,8 @@ function initialProgress(task: ResolvedTask): BatchTaskProgress {
   return {
     taskId: task.taskId,
     profileId: task.profileId,
+    conversationId: task.conversationId,
+    conversationLabel: task.conversationLabel,
     status: "starting",
     turns: 0,
     toolUses: 0,

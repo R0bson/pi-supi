@@ -8,7 +8,10 @@ const mockTheme = {
 
 describe("renderCall", () => {
   it("renders a compact task summary", () => {
-    const result = renderCall({ tasks: [{ id: "t1", profile: "explore" }] }, mockTheme as never);
+    const result = renderCall(
+      { tasks: [{ id: "t1", new: { profile: "explore" } }] },
+      mockTheme as never,
+    );
     expect(result).toBeDefined();
   });
 });

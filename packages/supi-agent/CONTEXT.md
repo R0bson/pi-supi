@@ -48,6 +48,18 @@ _Avoid_: Applied context, prompt inheritance, resource mode
 One caller-defined objective assigned to an Agent Profile and producing its own Agent Run Outcome independently of sibling tasks.
 _Avoid_: Job, step, chain link
 
+**Delegation Conversation**:
+The retained child context shared by an initial Delegation Task and its later Delegation Follow-Ups, each with a separate Agent Run. Separate conversations can use the same Agent Profile, and each belongs to one containing session and remains available when that session is reopened.
+_Avoid_: Agent Profile, persistent worker, shared agent memory
+
+**Delegation Follow-Up**:
+Additional caller instructions that start a new Agent Run from a Delegation Conversation's saved checkpoint, including after failure or cancellation. It uses the current policy for the same Profile ID and does not automatically repeat interrupted actions.
+_Avoid_: Retry, interrupted-run recovery, active-run steering
+
+**Delegation Checkpoint**:
+The child conversation state associated with a stored Delegation Task Result. It identifies the context available to a later follow-up on the active parent branch.
+_Avoid_: Conversation View, human transcript, memory summary
+
 **Delegation Batch**:
 An ordered set of independent Delegation Tasks accepted only when every selected profile and policy resolves successfully. Every task in a valid read-only multi-task batch starts concurrently without a queue; canceling the batch cancels every active Agent Run in it.
 _Avoid_: Workflow, chain, DAG

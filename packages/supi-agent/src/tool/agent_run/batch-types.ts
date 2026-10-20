@@ -1,5 +1,6 @@
 import type { ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
 import type { AgentRunProgress, AgentRunRegistry } from "@mrclrchtr/supi-agent-runtime/api";
+import type { DelegationCheckpoint } from "../../delegation/checkpoints.ts";
 import type { ResolvedTask } from "./batch-preflight.ts";
 import type { AgentConversationView, ConversationTaskMetadata } from "./conversation-view.ts";
 import type { AgentRunToolParams } from "./schema.ts";
@@ -11,6 +12,8 @@ export type BatchTaskStatus = AgentRunProgress["status"];
 export interface BatchTaskProgress {
   taskId: string;
   profileId: string;
+  conversationId: string;
+  conversationLabel: string;
   status: BatchTaskStatus;
   turns: number;
   toolUses: number;
@@ -31,6 +34,9 @@ export interface BatchProgressState {
 export interface BatchTaskResult {
   taskId: string;
   profileId: string;
+  conversationId: string;
+  conversationLabel: string;
+  checkpoint?: DelegationCheckpoint;
   status: BatchTaskStatus;
   /** Model-facing final assistant text, capped. */
   finalText?: string;

@@ -118,8 +118,8 @@ describe("/agents selected-run control with an active Delegation Batch", () => {
         {
           mode: "foreground",
           tasks: [
-            { id: "selected", profile: "explore", instructions: "Inspect selected" },
-            { id: "sibling", profile: "explore", instructions: "Inspect sibling" },
+            { id: "selected", new: { profile: "explore" }, instructions: "Inspect selected" },
+            { id: "sibling", new: { profile: "explore" }, instructions: "Inspect sibling" },
           ],
         },
         undefined,

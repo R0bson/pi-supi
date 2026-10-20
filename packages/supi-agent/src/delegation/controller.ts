@@ -13,8 +13,8 @@ import type {
   DelegationBatchHandle,
 } from "../tool/agent_run/batch-types.ts";
 import type { AgentRunToolParams } from "../tool/agent_run/schema.ts";
-import { AGENT_RESULT_TOOL_NAME } from "../tool/names.ts";
 import type { ProfileCatalogue } from "../types.ts";
+import { DelegationConversationState, getSuccessfulCollection } from "./conversation-state.ts";
 import { DelegationUsageReceipts } from "./usage-receipts.ts";
 import { waitForDelegation } from "./wait.ts";
 
@@ -23,6 +23,7 @@ export interface ManagedBatch {
   readonly handle: DelegationBatchHandle;
   readonly mode: "foreground" | "background";
   readonly callId: string;
+  readonly taskConversations: ReadonlyMap<string, string>;
   readonly launchId?: string;
   readonly sharedContext?: string;
   readonly notified: Set<string>;
@@ -35,6 +36,7 @@ export class DelegationController {
   readonly #batches = new Map<string, ManagedBatch>();
   readonly #outputPaths = new Set<string>();
   readonly receipts = new DelegationUsageReceipts();
+  readonly #conversationState = new DelegationConversationState();
   #manager?: ExtensionContext["sessionManager"];
   #closed = false;
   #reserved = 0;
@@ -61,6 +63,17 @@ export class DelegationController {
     const { params, catalogue, ctx, callId, onUpdate } = options;
     this.observeParent(ctx.signal);
     if (ctx.signal?.aborted) throw new Error("Delegation start canceled.");
+    this.#manager = ctx.sessionManager;
+    const activeBranch = ctx.sessionManager.getBranch();
+    const requestedContinuations = params.tasks.flatMap((task) =>
+      "continue" in task ? [{ taskId: task.id, conversationId: task.continue.conversationId }] : [],
+    );
+    this.#conversationState.assertAvailable(
+      requestedContinuations,
+      this.#batches.values(),
+      activeBranch,
+      (batch) => this.#onBranch(batch),
+    );
     const preflight = preflightDelegationBatch(params, catalogue, ctx);
     if ("errors" in preflight) {
       throw new Error(
@@ -76,7 +89,13 @@ export class DelegationController {
     if (mode === "background" && !backgroundAllowed) {
       throw new Error("Background delegation requires read-only profiles and TUI or RPC mode.");
     }
-    this.#manager = ctx.sessionManager;
+    this.#conversationState.reconcile(activeBranch);
+    this.#conversationState.assertAvailable(
+      preflight.tasks,
+      this.#batches.values(),
+      activeBranch,
+      (batch) => this.#onBranch(batch),
+    );
     const launch = ctx.sessionManager
       .getBranch()
       .find(
@@ -118,6 +137,7 @@ export class DelegationController {
       handle,
       mode,
       callId,
+      taskConversations: new Map(preflight.tasks.map((task) => [task.taskId, task.conversationId])),
       launchId: launch?.id,
       sharedContext: params.sharedContext,
       notified: new Set(),
@@ -133,11 +153,40 @@ export class DelegationController {
     this.#manager = ctx.sessionManager;
     this.observeParent(ctx.signal);
     this.receipts.reconcile(ctx.sessionManager.getEntries());
+    this.#conversationState.reconcile(ctx.sessionManager.getBranch());
     const batch = this.#batches.get(batchId);
     if (this.#closed || !batch || batch.mode !== "background")
       throw new Error("Unknown or expired background batch handle.");
     if (!this.#onBranch(batch)) throw new Error("The batch launch is not on the active branch.");
     return batch;
+  }
+
+  /** Prepare one collection payload, omitting checkpoints already stored or claimed. */
+  prepareCheckpointTasks(
+    callId: string,
+    batch: ManagedBatch,
+    ctx: ExtensionContext,
+  ): BatchTaskResult[] {
+    return this.#conversationState.prepareCheckpointTasks(
+      callId,
+      batch,
+      ctx.sessionManager.getBranch(),
+    );
+  }
+
+  /** Return live status for saved conversations on the active parent branch. */
+  conversationActivity(
+    ctx: ExtensionContext,
+  ): ReadonlyMap<
+    string,
+    { status: "busy" | "pending-collection"; label: string; profileId: string }
+  > {
+    this.#manager = ctx.sessionManager;
+    return this.#conversationState.activity(
+      this.#batches.values(),
+      ctx.sessionManager.getBranch(),
+      (batch) => this.#onBranch(batch),
+    );
   }
 
   /** Confirm launch results only after Pi has stored them. */
@@ -147,7 +196,8 @@ export class DelegationController {
     const branch = ctx.sessionManager.getBranch();
     const entries = ctx.sessionManager.getEntries();
     this.receipts.reconcile(entries, true);
-    this.#markCollected(entries);
+    this.#conversationState.reconcile(branch, true);
+    this.#markCollected(branch);
     for (const batch of this.#batches.values()) {
       if (batch.mode === "background" && !this.#onBranch(batch)) {
         batch.abandoned = true;
@@ -175,7 +225,7 @@ export class DelegationController {
     if (!batch || !this.#onBranch(batch)) return false;
     const collected = new Set<string>();
     for (const entry of ctx.sessionManager.getBranch()) {
-      const result = successfulCollection(entry);
+      const result = getSuccessfulCollection(entry);
       if (result?.batchId === batchId) for (const taskId of result.taskIds) collected.add(taskId);
     }
     return batch.handle
@@ -254,7 +304,7 @@ export class DelegationController {
 
   #markCollected(entries: readonly SessionEntry[]): void {
     for (const entry of entries) {
-      const result = successfulCollection(entry);
+      const result = getSuccessfulCollection(entry);
       if (!result) continue;
       const batch = this.#batches.get(result.batchId);
       if (batch) for (const taskId of result.taskIds) batch.notified.add(taskId);
@@ -315,27 +365,4 @@ export class DelegationController {
       });
     }
   }
-}
-
-/** Read delivered result identities, independently of whether their Usage was reported. */
-function successfulCollection(
-  entry: SessionEntry,
-): { batchId: string; taskIds: string[] } | undefined {
-  if (
-    entry.type !== "message" ||
-    entry.message.role !== "toolResult" ||
-    entry.message.toolName !== AGENT_RESULT_TOOL_NAME ||
-    entry.message.isError
-  )
-    return undefined;
-  const details = entry.message.details as
-    | { batchId?: unknown; tasks?: ({ taskId?: unknown } | null)[] }
-    | undefined;
-  if (typeof details?.batchId !== "string" || !Array.isArray(details.tasks)) return undefined;
-  return {
-    batchId: details.batchId,
-    taskIds: details.tasks.flatMap((task) =>
-      typeof task?.taskId === "string" ? [task.taskId] : [],
-    ),
-  };
 }

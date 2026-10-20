@@ -3,6 +3,7 @@ import type {
   AgentSession,
   AgentSessionEvent,
   ResourceLoader,
+  SessionEntry,
   SessionStats,
   SettingsManager,
   ToolDefinition,
@@ -23,8 +24,14 @@ export type AgentRunFailureCode =
   | "provider-error"
   | "unexpected-runner-failure";
 
+/** Detached native Pi session entries and their active leaf. */
+export interface AgentRunContext {
+  readonly entries: readonly SessionEntry[];
+  readonly leafId: string | null;
+}
+
 /** Terminal outcome of one managed Agent Run. */
-export type AgentRunOutcome<T> =
+export type AgentRunOutcome<T> = (
   | { kind: "success"; value: T; usage?: Usage }
   | ({ kind: "failed"; usage?: Usage } & (
       | { failureCode: "session-creation-failed"; diagnostics?: never }
@@ -34,7 +41,8 @@ export type AgentRunOutcome<T> =
         }
     ))
   | { kind: "canceled"; diagnostics: AgentRunDiagnostics; usage?: Usage }
-  | { kind: "timeout"; timeoutMs: number; diagnostics: AgentRunDiagnostics; usage?: Usage };
+  | { kind: "timeout"; timeoutMs: number; diagnostics: AgentRunDiagnostics; usage?: Usage }
+) & { context?: AgentRunContext };
 
 /** Caller-owned resources and policy used to create an Agent Run session. */
 export interface AgentSessionInputs {
@@ -62,6 +70,8 @@ export interface AgentSessionInputs {
   settingsManager: SettingsManager;
   /** Optional PI agent directory; defaults to PI's configured directory. */
   agentDir?: string;
+  /** Optional native Pi conversation history to restore for this run. */
+  readonly context?: AgentRunContext;
 }
 
 /** Read-only message shape exposed to caller-owned completion and observer callbacks. */
@@ -294,6 +304,8 @@ export interface StartAgentRunOptions<T> {
   timeoutMs?: number;
   /** Optional containing-session cancellation signal. */
   signal?: AbortSignal;
+  /** Capture finalized native Pi context in the terminal outcome. Defaults to false. */
+  captureContext?: boolean;
 }
 
 /** Sole public control interface for one Agent Run. */

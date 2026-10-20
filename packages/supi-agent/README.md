@@ -19,7 +19,7 @@ Built-in profiles:
 
 Profile sources overlay fields by ID with project → global → package precedence. A partial user manifest can pin only `model` or `thinking`; package tools and prompts continue to flow through. An invalid source falls through with a bounded diagnostic. Profiles are context-isolated, not permission- or filesystem-sandboxed.
 
-Changes to **Agent Run tool**, **Active Agent Run limit**, and each profile's **Model** and **Thinking** settings apply immediately. `/agents`, `agent_result`, and `agent_cancel` stay available when new starts through `agent_run` are off.
+Changes to **Agent Run tool**, **Active Agent Run limit**, and each profile's **Model** and **Thinking** settings apply immediately. `/agents`, `agent_list`, `agent_result`, and `agent_cancel` stay available when new starts through `agent_run` are off.
 
 ## Background delegation
 
@@ -31,11 +31,34 @@ In TUI and RPC, `agent_run` defaults to background execution for read-only profi
 - Each task can produce a completion notice before its siblings finish. The notice reaches a busy parent at the next safe turn boundary, or starts a turn when the parent is idle. It contains identifiers and status, not task output. Notices for successfully collected tasks are omitted from later model requests; the human transcript is unchanged.
 - The default limit is four active Agent Runs per session, counting foreground and background together. Set `agent.maxConcurrentRuns` in SuPi configuration or use **Active Agent Run limit** in `/supi-settings`. The value must be a positive integer. A batch that does not fit is rejected as a whole; there is no queue. Lowering the limit does not stop existing runs. Review limits are separate.
 - Parent abort stops active background batches and pauses automatic delivery until a later user-originated prompt. Normal parent completion leaves them running. Idle Escape keeps Pi's normal editor behavior; use `/agents` to stop selected runs.
-- Leaving the conversation branch that contains a batch's launch cancels active tasks. Compaction alone does not cancel them. Reload, session replacement, and shutdown stop owned runs and expire handles. No restart recovery is provided.
+- Leaving the conversation branch that contains a batch's launch cancels active tasks. Compaction alone does not cancel them. Reload, session replacement, and shutdown stop owned runs and expire batch handles. Saved conversation checkpoints remain available; active work is not restored.
 - Child Usage enters Pi's parent totals when Pi first stores a collection's Usage. A result hook can mark delivery as failed while preserving that Usage; retrying the output does not charge it again. Repeated collection does not count it again. `/agents` marks uncollected Usage: parent totals remain incomplete if results are never collected.
 - Read-only runs share the parent's working directory. They do not read a frozen snapshot.
 
 See the [background delegation design](docs/background-delegation.md) for the full contract.
+
+## Resumable Agent Conversations
+
+Start a new conversation with `new`, then use its conversation reference with `continue`:
+
+```ts
+agent_run({
+  tasks: [{ id: "deployment", new: { profile: "explore" }, instructions: "Inspect deployment." }],
+});
+
+agent_run({
+  tasks: [{ id: "secrets", continue: { conversationId: "<conversation reference>" }, instructions: "Check production secrets." }],
+});
+```
+
+- `agent_list({ offset, limit })` lists saved conversations on the active parent branch. Rows show the reference, original task ID, Profile ID, and availability. It does not return child history.
+- Each conversation keeps its original Profile ID. Every follow-up checks the current profile, model, tool, trust, and resource rules again.
+- A follow-up starts a new Agent Run. It adds only its new instructions and shared context. It does not replay earlier tool calls or interrupted actions. It warns the child to check current files and treat earlier actions as uncertain after a non-success result.
+- Pi saves child context in the stored `agent_run` result for foreground runs and the stored `agent_result` collection for background runs. Collect completed background work before you continue that conversation.
+- Saved context is in parent tool-result details, not model-facing result text. Pi's branch navigation, forks, clones, and retention rules apply. Parent session files and exports can include child context and can become larger.
+- Conversation references work only when their saved records are on the active branch. A missing, corrupt, or unsupported checkpoint blocks continuation. It does not start a new conversation silently.
+
+See the [approved resumable conversation design](docs/resumable-conversations.md) for the full data and branch contract.
 
 Provider-reported failures use `provider-error`. Results and debug events retain a bounded reason, such as `provider status 402 quota error`, when available. They do not retain raw error responses or credentials. Missing Usage is not a failure signal, and SuPi does not invent token or cost estimates.
 
@@ -79,4 +102,4 @@ Use `/agents` in TUI mode to inspect Agent and Reviewer runs in the current sess
 
 Transcript files are temporary JSONL files in a private directory for the parent session. They have no application cap or restart recovery. A storage failure marks capture incomplete but does not stop a run. The viewer shows the available transcript and the incomplete status. Session shutdown removes the directory.
 
-Other PI modes show only an unavailable notice. The overlay does not change global `tuiMode` or add a text control protocol, persistent child history, or replay files. Closing the viewer does not stop runs.
+Other PI modes show only an unavailable notice. The overlay does not change global `tuiMode` or add a text control protocol, durable viewer transcripts, or replay files. Closing the viewer does not stop runs.

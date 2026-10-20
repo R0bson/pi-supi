@@ -12,13 +12,18 @@ import {
   createAgentSession,
   createAgentSessionRuntime,
   getAgentDir,
-  SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import {
+  captureAgentRunContext,
+  cloneAgentRunContext,
+  createAgentRunSessionManager,
+} from "./context.ts";
 import { buildAgentRunDiagnostics } from "./diagnostics.ts";
 import { AgentRunLifecycleTraceCollector, getRegisteredToolNames } from "./lifecycle-trace.ts";
 import { createAgentRunModelRuntime } from "./provider-authority.ts";
 import { createAgentRunSessionView, deactivateAgentRunSessionView } from "./session-view.ts";
 import type {
+  AgentRunContext,
   AgentRunContinuationEvent,
   AgentRunContinuationFailureCode,
   AgentRunContinuationStep,
@@ -35,7 +40,11 @@ import type {
   StartAgentRunOptions,
   StartRegisteredAgentRunOptions,
 } from "./types.ts";
-import { collectAgentRunUsage } from "./usage.ts";
+import {
+  type AgentRunUsageBaseline,
+  collectAgentRunUsage,
+  createAgentRunUsageBaseline,
+} from "./usage.ts";
 
 /** Grace period for a provider abort before disposal continues. */
 export const AGENT_RUN_ABORT_GRACE_MS = 2_000;
@@ -71,6 +80,8 @@ export const AGENT_RUN_MAX_CONTINUATION_TURNS = 8;
 /** Start one foreground Agent Run and return its control handle immediately. */
 // biome-ignore lint/complexity/noExcessiveLinesPerFunction: lifecycle state and teardown stay in one audited closure.
 export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHandle<T> {
+  const restoredContext =
+    options.inputs.context === undefined ? undefined : cloneAgentRunContext(options.inputs.context);
   const listeners = new Set<AgentRunProgressListener>();
   const progressState: {
     status: AgentRunStatus;
@@ -87,6 +98,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
   let lifecycle = new AgentRunLifecycleTraceCollector();
   let runtime: AgentSessionRuntime | undefined;
   let session: AgentSession | undefined;
+  let usageBaseline: AgentRunUsageBaseline | undefined;
   let view: AgentRunSessionView | undefined;
   let unsubscribe: (() => void) | undefined;
   let observerCleanup: (() => void) | undefined;
@@ -174,7 +186,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
 
   const refreshUsage = (): Usage | undefined => {
     if (!session) return progressState.usage;
-    const usage = collectAgentRunUsage(session);
+    const usage = collectAgentRunUsage(session, usageBaseline);
     if (usage) progressState.usage = usage;
     return progressState.usage;
   };
@@ -207,6 +219,11 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
   const outcomeWithUsage = <TOutcome extends AgentRunOutcome<T>>(outcome: TOutcome): TOutcome => {
     const usage = refreshUsage();
     return usage ? ({ ...outcome, usage } as TOutcome) : outcome;
+  };
+
+  const captureFinalizedContext = () => {
+    if (!options.captureContext || !session) return undefined;
+    return captureAgentRunContext(session);
   };
 
   const trackExtensionWork = (start: () => Promise<unknown>): void => {
@@ -311,6 +328,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
     finalizing = true;
     closeSessionAdmission();
     finalization = (async () => {
+      const capturedContext = captureFinalizedContext();
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = undefined;
       unsubscribe?.();
@@ -323,7 +341,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
       observerCleanup = undefined;
       if (view) deactivateAgentRunSessionView(view);
       await disposeRuntime();
-      const finalOutcome = outcomeWithUsage(outcome);
+      const finalOutcome = outcomeWithUsage(withAgentRunContext(outcome, capturedContext));
       terminal = true;
       progressState.status = finalOutcome.kind === "success" ? "completed" : finalOutcome.kind;
       progressState.usage = finalOutcome.usage ?? progressState.usage;
@@ -536,7 +554,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
     const requestedModelId = step.model?.modelId ?? currentModelId;
     observeContinuation({ type: "turn-start", turn, modelId: requestedModelId });
     if (aborting || terminal || finalizing) return undefined;
-    const usageBefore = collectAgentRunUsage(activeSession);
+    const usageBefore = collectAgentRunUsage(activeSession, usageBaseline);
     if (step.model) {
       const requested = step.model.value as Model<Api> | undefined;
       const modelIdMatches = requested
@@ -569,7 +587,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
           modelId: requestedModelId,
           outcome: "model-switch-failed",
           promptAccepted: false,
-          ...usageDeltaFields(usageBefore, collectAgentRunUsage(activeSession)),
+          ...usageDeltaFields(usageBefore, collectAgentRunUsage(activeSession, usageBaseline)),
         };
         observeContinuationTurn(failed);
         observeContinuation({
@@ -626,7 +644,7 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
       modelId: requestedModelId,
       outcome,
       promptAccepted: accepted,
-      ...usageDeltaFields(usageBefore, collectAgentRunUsage(activeSession)),
+      ...usageDeltaFields(usageBefore, collectAgentRunUsage(activeSession, usageBaseline)),
     };
     observeContinuationTurn(completed);
     observeContinuation({ type: "turn-end", turn, modelId: requestedModelId, outcome });
@@ -945,10 +963,11 @@ export function startAgentRun<T>(options: StartAgentRunOptions<T>): AgentRunHand
         {
           cwd: options.inputs.cwd,
           agentDir,
-          sessionManager: SessionManager.inMemory(options.inputs.cwd),
+          sessionManager: createAgentRunSessionManager(options.inputs.cwd, restoredContext),
         },
       );
       session = runtime.session;
+      if (restoredContext) usageBaseline = createAgentRunUsageBaseline(session);
       installSingleSessionDisposal(session);
       installExtensionSendGuards(session);
       if (cancelRequested || terminal || finalizing) {
@@ -1167,6 +1186,13 @@ export function startRegisteredAgentRun<T>(
       : {}),
   });
   return registeredHandle;
+}
+
+function withAgentRunContext<T>(
+  outcome: AgentRunOutcome<T>,
+  context: AgentRunContext | undefined,
+): AgentRunOutcome<T> {
+  return context ? { ...outcome, context } : outcome;
 }
 
 function usageFields(usage: Usage | undefined): { usage?: Usage } {
