@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type {
   CodePosition,
   CodeRequestControl,
@@ -38,6 +39,18 @@ export async function runRenameRefactor(options: {
     { kind: "workspace-edit", edit: response.value },
     {
       getOpenDocumentVersion: (candidate) => lsp.getOpenDocumentVersion(candidate),
+      getSynchronizedDocumentSnapshot: (candidate) => {
+        const snapshot = response.documentSnapshots?.find(
+          (document) => path.resolve(document.file) === path.resolve(candidate),
+        );
+        return snapshot
+          ? {
+              version: snapshot.version,
+              contentFingerprint: snapshot.contentFingerprint,
+              diskContentFingerprint: snapshot.diskContentFingerprint,
+            }
+          : null;
+      },
       authorizedMutationRoots: response.authorizedMutationRoots,
     },
   );

@@ -41,6 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ai": "vitest run --reporter=agent",
+    "test:language-baseline:acceptance": "node scripts/language-baseline/verify-prerequisites.mjs && vitest run --config packages/supi-code-intelligence/vitest.acceptance.config.ts --reporter=agent",
     "skills:check": "pnpm --filter @mrclrchtr/supi-skill-patches check",
     "skills:patches:compose": "pnpm --filter @mrclrchtr/supi-skill-patches patches:compose",
     "skills:patches:split": "pnpm --filter @mrclrchtr/supi-skill-patches patches:split",

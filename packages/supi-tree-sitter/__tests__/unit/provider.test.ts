@@ -118,6 +118,35 @@ describe("TreeSitterProvider", () => {
       }
     });
 
+    it("preserves partial outline data, native kinds, file, and 0-based error ranges", async () => {
+      const provider = createTreeSitterProvider(
+        mockService({
+          outline: async () => ({
+            kind: "partial" as const,
+            file: "nested.rs",
+            reason: "Recovered syntax.",
+            errorRanges: [{ startLine: 3, startCharacter: 2, endLine: 3, endCharacter: 2 }],
+            data: [
+              {
+                name: "Speak",
+                kind: "interface",
+                nativeKind: "trait",
+                range: { startLine: 1, startCharacter: 1, endLine: 2, endCharacter: 1 },
+              },
+            ],
+          }),
+        }),
+      );
+      const result = await provider.outline("nested.rs");
+      expect(result).toMatchObject({
+        kind: "partial",
+        file: "nested.rs",
+        reason: "Recovered syntax.",
+        errorRanges: [{ start: { line: 2, character: 1 }, end: { line: 2, character: 1 } }],
+        data: [expect.objectContaining({ kind: "interface", nativeKind: "trait" })],
+      });
+    });
+
     it("passes through unsupported-language errors", async () => {
       const service = mockService({
         outline: async () => ({

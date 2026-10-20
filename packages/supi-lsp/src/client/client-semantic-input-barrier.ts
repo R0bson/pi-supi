@@ -21,8 +21,17 @@ const DEFAULT_MAX_CONCURRENT_READS = 16;
 export interface SemanticInputDocument {
   readonly uri: string;
   readonly filePath: string;
+  readonly version: number;
   readonly content: string;
   readonly contentFingerprint: string;
+}
+
+/** One open buffer and disk fingerprint verified by an input synchronization pass. */
+export interface SemanticInputDocumentSnapshot {
+  readonly filePath: string;
+  readonly version: number;
+  readonly contentFingerprint: string;
+  readonly diskContentFingerprint: string;
 }
 
 /** One open document update selected by the barrier after a full read. */
@@ -48,9 +57,14 @@ export interface SemanticInputBarrierOptions {
   readonly readFile?: SemanticInputFileReader;
 }
 
-/** Revision token returned by one completed input synchronization pass. */
-export interface SemanticInputSnapshot {
+/** Revision token used to check one semantic input generation. */
+export interface SemanticInputRevision {
   readonly revision: number;
+}
+
+/** Verified inputs returned by one complete synchronization pass. */
+export interface SemanticInputSnapshot extends SemanticInputRevision {
+  readonly documents: readonly SemanticInputDocumentSnapshot[];
 }
 
 interface OpenDocumentRead {
@@ -150,10 +164,10 @@ export class SemanticInputBarrier {
 
   /** Recheck the full input set after a semantic request completes. */
   async assertCurrent(
-    snapshot: SemanticInputSnapshot,
+    snapshot: SemanticInputRevision,
     control?: CodeRequestControl,
     contentOverrides?: ReadonlyMap<string, string>,
-  ): Promise<void> {
+  ): Promise<SemanticInputSnapshot> {
     if (!this.#host.isOperational()) {
       throw new Error("Semantic input synchronization is unavailable because the client stopped.");
     }
@@ -176,6 +190,7 @@ export class SemanticInputBarrier {
         )
       );
     }
+    return current;
   }
 
   /** Return the current typed input change after a revision, when present. */
@@ -305,7 +320,24 @@ export class SemanticInputBarrier {
     // resulting generation as owned by this completed pass so a late caller
     // can join it instead of starting a redundant read pass.
     pending.generation = this.#revision;
-    return { revision: this.#revision };
+    const currentDocuments = this.#host.getOpenDocuments();
+    const diskFingerprints = new Map(plan.observedDiskFingerprints);
+    return {
+      revision: this.#revision,
+      documents: currentDocuments.flatMap((document) => {
+        const diskContentFingerprint = diskFingerprints.get(document.uri);
+        return diskContentFingerprint === undefined
+          ? []
+          : [
+              {
+                filePath: document.filePath,
+                version: document.version,
+                contentFingerprint: document.contentFingerprint,
+                diskContentFingerprint,
+              },
+            ];
+      }),
+    };
   }
 
   #assertPendingCanRun(pending: PendingSynchronization): void {

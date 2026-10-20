@@ -1,6 +1,7 @@
 // biome-ignore-all lint/style/noExcessiveLinesPerFile: one mailbox state machine owns all Worker lifecycle transitions
 import { setImmediate as yieldImmediate } from "node:timers/promises";
 import {
+  type CFamilyFileAssociationRule,
   type CodeRequestControl,
   CodeRequestDeadlineError,
   throwIfCodeRequestInterrupted,
@@ -28,6 +29,7 @@ import {
 export type StructuralWorkerFactory = (options: {
   readonly cwd: string;
   readonly generation: number;
+  readonly fileAssociations: readonly CFamilyFileAssociationRule[];
 }) => StructuralWorkerLike;
 
 const TEST_WORKER_FACTORY = Symbol.for("supi-tree-sitter/test-worker-factory");
@@ -74,6 +76,7 @@ interface ActiveWorker {
 export class StructuralWorkerClient {
   readonly #cwd: string;
   readonly #factory: StructuralWorkerFactory;
+  readonly #fileAssociations: readonly CFamilyFileAssociationRule[];
   #worker: ActiveWorker | null = null;
   #queue: PendingRequest<unknown>[] = [];
   #active: PendingRequest<unknown> | null = null;
@@ -86,9 +89,16 @@ export class StructuralWorkerClient {
   readonly #lifecycle = new StructuralWorkerLifecycle();
   #disposePromise: Promise<void> | null = null;
 
-  constructor(cwd: string, factory?: StructuralWorkerFactory) {
+  constructor(
+    cwd: string,
+    factory?: StructuralWorkerFactory,
+    fileAssociations: readonly CFamilyFileAssociationRule[] = [],
+  ) {
     this.#cwd = cwd;
     this.#factory = factory ?? testWorkerFactory() ?? createProductionWorker;
+    this.#fileAssociations = Object.freeze(
+      fileAssociations.map((rule) => Object.freeze({ ...rule })),
+    );
   }
 
   /** Start and validate the owned Worker without running parser work on the parent. */
@@ -187,7 +197,11 @@ export class StructuralWorkerClient {
 
   async #startGeneration(): Promise<void> {
     const generation = ++this.#generation;
-    const worker = this.#factory({ cwd: this.#cwd, generation });
+    const worker = this.#factory({
+      cwd: this.#cwd,
+      generation,
+      fileAssociations: this.#fileAssociations,
+    });
     let rejectStartup = (_message: string) => {};
     const active: ActiveWorker = {
       generation,
@@ -563,6 +577,7 @@ function testWorkerFactory(): StructuralWorkerFactory | undefined {
 function createProductionWorker(options: {
   cwd: string;
   generation: number;
+  fileAssociations: readonly CFamilyFileAssociationRule[];
 }): StructuralWorkerLike {
   return createStructuralWorkerProcess(options);
 }

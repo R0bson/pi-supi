@@ -33,6 +33,7 @@ export function graphDisplaySection(
     totalCount: section.evidence.metadata.totalCount,
     omittedCount: section.evidence.metadata.omittedCount,
     partialReason: section.evidence.metadata.partialReason,
+    partialMessage: section.evidence.metadata.partialMessage,
     format: (item) => {
       const site = `L${item.line}:${item.character}`;
       if (section.rel !== "callees") return site;

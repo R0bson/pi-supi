@@ -1,4 +1,8 @@
-import type { CodeRequestControl, ConfidenceMode } from "@mrclrchtr/supi-code-runtime/api";
+import type {
+  CodeRequestControl,
+  ConfidenceMode,
+  SourceRange,
+} from "@mrclrchtr/supi-code-runtime/api";
 import type { WorkspaceLspRuntimeState } from "@mrclrchtr/supi-lsp/api";
 import type { ArchitectureModel } from "../analysis/architecture/model.ts";
 import type { EvidenceListMetadata } from "../analysis/evidence.ts";
@@ -84,6 +88,8 @@ export interface OrientationSectionData {
   readonly title: string;
   readonly status: "complete" | "partial" | "unavailable";
   readonly reason: string | null;
+  /** Syntax recovery ranges for partial structural evidence, in 0-based coordinates. */
+  readonly errorRanges?: readonly SourceRange[];
   /** Semantic/structural confidence only; filesystem/config facts use unavailable. */
   readonly confidence: ConfidenceMode;
   readonly provenance: readonly OrientationProvenance[];

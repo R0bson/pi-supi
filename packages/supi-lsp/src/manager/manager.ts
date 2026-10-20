@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+  type CFamilyFileAssociationResolver,
   type CodeQueryResult,
   type CodeRequestControl,
   isCodeRequestInterruption,
@@ -69,6 +70,7 @@ import {
   scanWorkspaceSources as scanAutomaticWorkspaceSources,
   type WorkspaceSourceInventory,
 } from "../diagnostics/workspace-sources.ts";
+import { MAX_RENAME_DOCUMENTS } from "../provider/semantic-edit-discovery.ts";
 import { raceRequestControl } from "../session/readiness.ts";
 import {
   emptyProcessCrashRecoveryReport,
@@ -174,6 +176,57 @@ type FileRoute = {
   root: string;
   key: string;
 };
+
+function validateRenameEnrollmentFiles(
+  client: LspClient,
+  files: readonly string[],
+  routeKey: string,
+  routeForFile: (file: string) => string | null,
+): string | null {
+  if (files.length > MAX_RENAME_DOCUMENTS) {
+    return "Rename affects too many files to synchronize safely.";
+  }
+  if (files.length === 0) return "Rename returned no text-edit documents.";
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = fs.realpathSync(client.root);
+    if (!fs.statSync(canonicalRoot).isDirectory()) throw new Error("not a directory");
+  } catch {
+    return "The semantic route root is not available.";
+  }
+  for (const file of files) {
+    if (!path.isAbsolute(file) || path.normalize(file) !== file) {
+      return `Rename target "${file}" is not a normalized path.`;
+    }
+    const pathError = validateRenameTargetFile(file, canonicalRoot);
+    if (pathError) return pathError;
+    if (routeForFile(file) !== routeKey) {
+      return `Rename target "${file}" uses another semantic route.`;
+    }
+  }
+  return null;
+}
+
+function validateRenameTargetFile(file: string, canonicalRoot: string): string | null {
+  let canonicalFile: string;
+  try {
+    const canonicalParent = fs.realpathSync(path.dirname(file));
+    if (!fs.lstatSync(file).isFile()) {
+      return `Rename target "${file}" is not a regular file.`;
+    }
+    canonicalFile = fs.realpathSync(file);
+    if (
+      path.resolve(canonicalFile) !== path.resolve(path.join(canonicalParent, path.basename(file)))
+    ) {
+      return `Rename target "${file}" resolves through a file link.`;
+    }
+  } catch {
+    return `Rename target "${file}" is not a readable file.`;
+  }
+  return projectRoots.isWithinOrEqual(canonicalRoot, canonicalFile)
+    ? null
+    : `Rename target "${file}" is outside the semantic route root.`;
+}
 
 type ClientRestartResult = {
   key: string;
@@ -351,6 +404,7 @@ export class LspManager {
   /** Coalesce per-file tracking transitions into one bulk transition. */
   private trackedFilesBatchDepth = 0;
   private trackedFilesBatchChanged = false;
+  // biome-ignore lint/complexity/useMaxParams: the host passes one fixed association snapshot with the existing runtime dependencies
   constructor(
     private readonly config: LspConfig,
     private readonly cwd: string,
@@ -358,6 +412,7 @@ export class LspManager {
     private readonly automaticPathPolicy: AutomaticLspPathPolicy = createDefaultAutomaticLspPathPolicy(
       cwd,
     ),
+    private readonly fileAssociations?: CFamilyFileAssociationResolver,
   ) {}
   getCwd(): string {
     return this.cwd;
@@ -569,6 +624,7 @@ export class LspManager {
         this.handleClientLifecycle(key, generation, client, kind);
       },
       this.cwd,
+      this.fileAssociations,
     );
     return client;
   }
@@ -2765,6 +2821,42 @@ export class LspManager {
       );
     });
   }
+  /** Enroll discovered rename documents only after one complete authority check. */
+  async enrollRenameDocuments(
+    client: LspClient,
+    filePaths: readonly string[],
+    control?: CodeRequestControl,
+  ): Promise<{ kind: "enrolled" } | { kind: "unavailable"; reason: string }> {
+    throwIfCodeRequestInterrupted(control);
+    const files = [...new Set(filePaths)].sort();
+    const routeKey = clientKey(client.name, client.root);
+    if (this.clients.get(routeKey) !== client) {
+      return { kind: "unavailable", reason: "The semantic route changed during rename planning." };
+    }
+    const validationError = validateRenameEnrollmentFiles(
+      client,
+      files,
+      routeKey,
+      (file) => this.resolveFileRoute(file)?.key ?? null,
+    );
+    if (validationError) return { kind: "unavailable", reason: validationError };
+
+    for (const file of files) {
+      throwIfCodeRequestInterrupted(control);
+      const openedClient = await this.ensureFileOpen(file, {
+        recoverProcessCrash: true,
+        control,
+      });
+      if (openedClient !== client) {
+        return {
+          kind: "unavailable",
+          reason: "The semantic route changed during rename enrollment.",
+        };
+      }
+    }
+    return { kind: "enrolled" };
+  }
+
   async ensureFileOpen(
     filePath: string,
     options: FileClientRequestOptions = {},

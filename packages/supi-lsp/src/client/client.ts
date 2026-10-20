@@ -5,6 +5,7 @@
 import { type ChildProcess, execSync, spawn } from "node:child_process";
 import * as path from "node:path";
 import {
+  type CFamilyFileAssociationResolver,
   type CodeQueryResult,
   type CodeRequestControl,
   completedCodeQuery,
@@ -70,6 +71,10 @@ import { ClientDiagnostics } from "./client-diagnostics.ts";
 import type { ClientDiagnosticSnapshot, DiagnosticEntry } from "./client-document-state.ts";
 import { type NormalizedDocumentSync, normalizeDocumentSync } from "./client-document-sync.ts";
 import { SemanticInputRequestRetryGuard } from "./client-request-enrollment.ts";
+import type {
+  SemanticInputDocumentSnapshot,
+  SemanticInputSnapshot,
+} from "./client-semantic-input-barrier.ts";
 import {
   isSemanticInputEnrollmentError,
   SemanticInputSynchronizationError,
@@ -87,7 +92,13 @@ interface SemanticRequestAttemptState {
 
 interface RefactorTransaction {
   rpc: JsonRpcClient;
-  assertCurrent: () => Promise<void>;
+  assertCurrent: () => Promise<SemanticInputSnapshot>;
+}
+
+export interface RenameDetailedWithSnapshotsResult {
+  readonly result: CodeQueryResult<WorkspaceEdit | null>;
+  /** Exact documents synchronized before and rechecked after this request. */
+  readonly documentSnapshots: readonly SemanticInputDocumentSnapshot[];
 }
 
 /**
@@ -529,6 +540,8 @@ export class LspClient {
     private readonly onLifecycleTransition?: LspClientLifecycleListener,
     /** Absolute workspace root for debug-telemetry identity. */
     readonly cwd?: string,
+    /** Immutable workspace association snapshot for document language IDs. */
+    fileAssociations?: CFamilyFileAssociationResolver,
   ) {
     this.name = name;
     this.root = root;
@@ -562,6 +575,7 @@ export class LspClient {
     this.diagnostics = new ClientDiagnostics({
       server: name,
       cwd: cwd,
+      fileAssociations,
       isOperational: () => this.rpc !== null && this._status === "running",
       diagnosticRequestAdapter: this.diagnosticRequestAdapter,
       documentSync: () => this.getDocumentSyncOptions(),
@@ -1155,8 +1169,30 @@ export class LspClient {
     newName: string,
     control?: CodeRequestControl,
   ): Promise<CodeQueryResult<WorkspaceEdit | null>> {
+    return (
+      await this.renameDetailedWithSnapshots(filePath, position, newName, {
+        control,
+        snapshotFiles: [filePath],
+      })
+    ).result;
+  }
+
+  /** Run rename and retain the exact synchronized inputs verified by its transaction. */
+  async renameDetailedWithSnapshots(
+    filePath: string,
+    position: Position,
+    newName: string,
+    options: {
+      readonly control?: CodeRequestControl;
+      readonly snapshotFiles?: readonly string[];
+    } = {},
+  ): Promise<RenameDetailedWithSnapshotsResult> {
+    const { control, snapshotFiles = [filePath] } = options;
     if (!this.supportsRename) {
-      return unavailableCodeQuery("The server does not advertise textDocument/rename.");
+      return {
+        result: unavailableCodeQuery("The server does not advertise textDocument/rename."),
+        documentSnapshots: [],
+      };
     }
     if (
       typeof filePath !== "string" ||
@@ -1165,9 +1201,12 @@ export class LspClient {
       typeof newName !== "string" ||
       newName.trim().length === 0
     ) {
-      return unavailableCodeQuery(
-        "Rename requires a valid file, position, and non-empty new name.",
-      );
+      return {
+        result: unavailableCodeQuery(
+          "Rename requires a valid file, position, and non-empty new name.",
+        ),
+        documentSnapshots: [],
+      };
     }
 
     const params = {
@@ -1175,22 +1214,34 @@ export class LspClient {
       position,
       newName,
     };
-    return this.runRefactorTransaction("textDocument/rename", control, async (transaction) => {
-      if (this.supportsPrepareRename) {
-        const prepared = await transaction.rpc.sendRequest(
-          "textDocument/prepareRename",
-          { textDocument: { uri: fileToUri(filePath) }, position },
-          control,
+    let documentSnapshots: readonly SemanticInputDocumentSnapshot[] = [];
+    const requestedFiles = new Set(snapshotFiles.map((file) => path.resolve(file)));
+    const result = await this.runRefactorTransaction(
+      "textDocument/rename",
+      control,
+      async (transaction) => {
+        if (this.supportsPrepareRename) {
+          const prepared = await transaction.rpc.sendRequest(
+            "textDocument/prepareRename",
+            { textDocument: { uri: fileToUri(filePath) }, position },
+            control,
+          );
+          const preparationError = validatePrepareRenameResult(prepared, position);
+          if (preparationError) throw new Error(preparationError);
+          await transaction.assertCurrent();
+        }
+        return (await transaction.rpc.sendRequest("textDocument/rename", params, control)) as
+          | WorkspaceEdit
+          | null
+          | undefined;
+      },
+      (snapshot) => {
+        documentSnapshots = snapshot.documents.filter((document) =>
+          requestedFiles.has(path.resolve(document.filePath)),
         );
-        const preparationError = validatePrepareRenameResult(prepared, position);
-        if (preparationError) throw new Error(preparationError);
-        await transaction.assertCurrent();
-      }
-      return (await transaction.rpc.sendRequest("textDocument/rename", params, control)) as
-        | WorkspaceEdit
-        | null
-        | undefined;
-    });
+      },
+    );
+    return { result, documentSnapshots };
   }
 
   async codeActions(
@@ -1300,6 +1351,7 @@ export class LspClient {
     method: string,
     control: CodeRequestControl | undefined,
     operation: (transaction: RefactorTransaction) => Promise<T | null | undefined>,
+    onVerifiedSnapshot?: (snapshot: SemanticInputSnapshot) => void,
   ): Promise<CodeQueryResult<T | null>> {
     throwIfCodeRequestInterrupted(control);
     if (!this.rpc || this._status !== "running") {
@@ -1321,6 +1373,7 @@ export class LspClient {
           operation,
           retryGuard,
           attempt,
+          onVerifiedSnapshot,
         });
         if (retryGuard.hasRetried) {
           this.recordSemanticRetry({ method, control, retryGuard, outcome: "completed" });
@@ -1364,8 +1417,9 @@ export class LspClient {
     operation: (transaction: RefactorTransaction) => Promise<T | null | undefined>;
     retryGuard: SemanticInputRequestRetryGuard;
     attempt: SemanticRequestAttemptState;
+    onVerifiedSnapshot?: (snapshot: SemanticInputSnapshot) => void;
   }): Promise<T | null> {
-    const { method, control, operation, retryGuard, attempt } = options;
+    const { method, control, operation, retryGuard, attempt, onVerifiedSnapshot } = options;
     throwIfCodeRequestInterrupted(control);
     retryGuard.assertCurrent();
     await this.getReady(control);
@@ -1381,10 +1435,14 @@ export class LspClient {
       rpc,
       assertCurrent: async () => {
         retryGuard.assertCurrent();
-        await this.diagnostics.assertSemanticInputsCurrent(inputSnapshot, control);
+        return this.diagnostics.assertSemanticInputsCurrent(inputSnapshot, control);
       },
     });
-    await this.diagnostics.assertSemanticInputsCurrent(inputSnapshot, control);
+    const verifiedSnapshot = await this.diagnostics.assertSemanticInputsCurrent(
+      inputSnapshot,
+      control,
+    );
+    onVerifiedSnapshot?.(verifiedSnapshot);
     return data ?? null;
   }
 

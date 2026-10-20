@@ -10,6 +10,26 @@ See also: root `CONTEXT.md` for project-wide terms (Context Efficiency, Prompt S
 The set of agent-facing capabilities that help understand, navigate, search, and refactor code.
 _Avoid_: code intel, IDE features
 
+**Language capability baseline**:
+The set of Code intelligence operations required for each selected language where those operations have a defined meaning. It does not imply identical syntax or equal capabilities across language servers.
+_Avoid_: full language support, parser availability as operation support, a single supported/unsupported label for a language
+
+**Language verification case**:
+A check of one Language capability baseline operation for a specified language, source form, provider/toolchain version, and operating system. A passing case establishes evidence for that combination, not every language server or version.
+_Avoid_: route coverage, parser availability, skipped test as verified support, universal compatibility
+
+**C-family file association**:
+An explicit project rule that assigns C or C++ to selected source paths for both structural parsing and semantic document identification. It does not establish compiler flags or change the selected language server.
+_Avoid_: content-based language guess, parser-only override, compiler configuration
+
+**Native declaration kind**:
+The source-language construct retained in structural declaration evidence, such as a Rust trait or Java record. It is separate from a common AST search category, a Provider-reported symbol kind, and a Canonical declaration identity kind.
+_Avoid_: LSP kind, target identity kind, replacing native syntax with a common filter label
+
+**Structural import evidence**:
+A source-written import or dependency target and its location, collected without symbol resolution. It does not establish local bindings, a resolved file, or an actual runtime dependency.
+_Avoid_: dependency graph, resolved import, alias search, installed dependency
+
 **Workspace Overview**:
 An optional, bounded first-turn map of directly observed workspace facts that helps an agent select an Orientation focus. It works without package metadata and labels repository content as untrusted evidence, not instructions.
 _Avoid_: architecture overview, complete project context, trusted instructions, convention-based role guesses
@@ -219,7 +239,7 @@ Code understanding based on symbol identity and relationships, such as definitio
 _Avoid_: structural analysis, syntax-only analysis
 
 **Structural analysis**:
-Code understanding based on source shape and syntax, such as imports, exports, outlines, and call-like structure, without requiring symbol identity.
+Code understanding based on source shape and syntax, such as imports, exports, outlines, and call-like structure, without requiring symbol identity. Syntax recovery that can hide relevant evidence makes the observation partial, not complete absence.
 _Avoid_: semantic analysis, symbol-aware analysis
 
 **Structural callee**:

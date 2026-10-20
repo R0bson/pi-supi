@@ -29,13 +29,24 @@ export function renderStructuredEmptyState(options: {
   return lines.join("\n");
 }
 
-function renderFailureSummary(failures: readonly { file: string; reason: string }[]): string[] {
+function renderFailureSummary(failures: StructuredPatternResult["failures"]): string[] {
   if (failures.length === 0) return [];
+  const partialCount = failures.filter((failure) => failure.kind === "partial").length;
+  const unavailableCount = failures.length - partialCount;
+  const summary =
+    unavailableCount === 0
+      ? "had partial syntax evidence"
+      : partialCount === 0
+        ? "could not be analyzed"
+        : "had incomplete or unavailable structural evidence";
   const lines: string[] = [
-    `**${failures.length} file${failures.length === 1 ? "" : "s"} could not be analyzed:**`,
+    `**${failures.length} file${failures.length === 1 ? "" : "s"} ${summary}:**`,
   ];
   for (const failure of failures.slice(0, 5)) {
-    lines.push(`- \`${failure.file}\` — ${failure.reason}`);
+    const locations = failure.errorRanges?.length
+      ? ` Errors: ${failure.errorRanges.map((range) => `L${range.start.line + 1}:${range.start.character + 1}`).join(", ")}.`
+      : "";
+    lines.push(`- \`${failure.file}\` — ${failure.reason}${locations}`);
   }
   if (failures.length > 5) lines.push(`- _+${failures.length - 5} more_`);
   return lines;
@@ -117,7 +128,9 @@ export function renderStructuredMatches(
   for (const [file, fileMatches] of grouped) {
     lines.push(`### ${file}`);
     for (const match of fileMatches) {
-      lines.push(`- \`${match.name}\` (${match.kind}) L${match.line}`);
+      lines.push(
+        `- \`${match.name}\` (${match.kind}) L${match.line}:${match.startCharacter}–L${match.endLine}:${match.endCharacter}`,
+      );
     }
     lines.push("");
   }

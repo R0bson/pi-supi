@@ -1,3 +1,4 @@
+import type { SourceRange } from "@mrclrchtr/supi-code-runtime/api";
 import type { ReadNextItem } from "../analysis/read-next.ts";
 import type { RelationLocationPartialReason } from "../analysis/relations/provider-locations.ts";
 import type {
@@ -42,6 +43,11 @@ export type GraphSection =
         readonly enclosingScope: CalleeScope;
         readonly calls: readonly CallEntry[];
         readonly depth: "direct" | "deep";
+        readonly recovery: {
+          readonly file: string;
+          readonly reason: string;
+          readonly errorRanges: readonly SourceRange[];
+        } | null;
       };
       readonly readNext: readonly ReadNextItem[];
     }

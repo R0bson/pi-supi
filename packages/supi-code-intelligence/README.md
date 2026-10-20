@@ -109,6 +109,8 @@ Candidate selection for Graph, Resolve, and Orientation uses one structured tran
 
 The planner accepts one target handle or anchor and one operation: `rename_symbol`, `extract_function`, `extract_variable`, `update_imports`, or `delete_dead_code`. Rename, import updates, and dead-code removal depend on the language server and validated edits. Function and variable extraction are currently unavailable for all languages: standard LSP code actions do not provide a safe exact extraction-name contract. Unsupported operations do not fall back to text edits.
 
+Rename can discover affected files and repeat the request once after validated same-route enrollment, with a limit of 64 files. A null server document version for an open file is accepted only with a verified request snapshot of synchronized content. Plans retain its content fingerprint and client version; unknown or mismatched state remains unavailable.
+
 Plans are held in memory for the current session. Apply accepts only the returned `planId`; it does not create or regenerate a plan. It checks SHA-256 file fingerprints, provider-authorized roots, document versions when available, edit ranges, and overlaps before writing. Changed files require a new plan. A successful apply removes the plan.
 
 Refactors can change several files. If a later write fails, the tool attempts to restore earlier files and reports restoration failures. It does not create a Git commit. The plan/apply split is not a user confirmation dialog: the agent can call apply. Review the diff and run tests.
@@ -122,35 +124,60 @@ Tree-sitter grammars are bundled and parse locally without an LSP server. Both l
 | Language | Default LSP command | LSP file extensions | AST file extensions | AST search operations |
 |---|---|---|---|---|
 | TypeScript / JavaScript | `typescript-language-server` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs` | Outline, imports, exports, calls |
-| Python | `pyright-langserver` | `.py`, `.pyi` | `.py`, `.pyi` | Outline, calls |
-| Rust | `rust-analyzer` | `.rs` | `.rs` | Outline, calls |
-| Go | `gopls` | `.go`, `.mod` | `.go` | Outline, calls |
-| C / C++ | `clangd` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | Outline, calls |
+| Python | `pyright-langserver` | `.py`, `.pyi` | `.py`, `.pyi` | Outline, imports, calls |
+| Rust | `rust-analyzer` | `.rs` | `.rs` | Outline, imports, calls |
+| Go | `gopls` | `.go`, `.mod` | `.go` | Outline, imports, calls |
+| C / C++ | `clangd` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | Outline, imports, calls |
 | Bash / shell | `bash-language-server` | `.sh`, `.bash`, `.zsh`, `.ksh` | `.sh`, `.bash`, `.zsh`, `.ksh` | Outline, calls |
 | HTML | `vscode-html-language-server` | `.html`, `.htm`, `.xhtml` | `.html`, `.htm`, `.xhtml` | Outline |
 | SQL | `sql-language-server` | `.sql` | `.sql` | Outline |
 | Ruby | `ruby-lsp` | `.rb`, `.erb`, `.gemspec` | `.rb`, `.gemspec` | Outline, calls |
-| Java | `jdtls` | `.java` | `.java` | Outline, calls |
+| Java | `jdtls` | `.java` | `.java` | Outline, imports, calls |
 | Kotlin | `kotlin-lsp` | `.kt`, `.kts` | `.kt`, `.kts` | Outline, calls |
 | R | `R` with the `languageserver` package | `.r` | `.r` | Outline, calls |
 | LaTeX / BibTeX | `texlab` | `.tex`, `.bib` | `.tex`, `.sty`, `.cls` | Outline, imports |
 
 The AST operation column applies only to the AST extensions in that row:
 
-- **Outline** supplies `code_find` kind `definition`. Kinds `type`, `interface`, `class`, `method`, and `enum` filter the extracted outline kinds; not every language produces every kind. HTML outlines contain elements with non-empty `id` attributes. SQL outlines contain supported `CREATE` declarations and shallow table/type members.
-- **Imports / exports** supply kinds `import` / `export`. JavaScript-family imports use `import` statements; exports use file-level `export` statements. CommonJS `require()` and `module.exports` are not collected as imports or exports. LaTeX imports include package, class, source, and bibliography directives.
-- **Calls** supplies kind `call` and structural callee analysis. These are written call expressions, not symbol-identity relationships. HTML, SQL, and LaTeX have no built-in call-site or callee queries.
-- `.mod`, `.erb`, and `.bib` have built-in LSP routes but no AST grammar. `.sty` and `.cls` have AST support but no built-in LSP route. `.h` selects the C grammar; `.jsx` selects JavaScript; `.tsx` selects TSX. Shell extensions all select the Bash grammar, not separate Zsh or KornShell grammars.
+- **Outline** supplies `code_find` kind `definition`. TS/JS, Python, Java, Go, Rust, and C/C++ include nested named declarations and members, not every local binding. Kinds `type`, `interface`, `class`, `method`, and `enum` use common filters while results retain native declaration kinds. For example, a Rust trait matches `interface`, and a Go struct or Java record matches `type`; they do not become classes. Other languages retain their existing extraction limits. HTML outlines contain elements with non-empty `id` attributes. SQL outlines contain supported `CREATE` declarations and shallow table/type members.
+- **Imports** supply kind `import` and match written source targets, not local aliases or resolved files. Supported forms include JS/TS declarations, Python `import`/`from`, Java ordinary/static imports, Go import paths, Rust `use`/`extern crate`/external `mod`, literal C/C++ includes, and LaTeX dependency directives. Conditional directives are source evidence, not proof of active dependencies. CommonJS loader calls, dynamic import calls, computed targets, and C++20 module imports are not collected.
+- **Exports** supply kind `export` from file-level JS/TS export statements. CommonJS assignments and a cross-language public-interface model are not supported.
+- **Calls** supply kind `call` from file-wide call-site queries; graph callees use a separate anchored query. Each distinct site retains its source coordinates, including repeated calls on one line. These are written expressions, not symbol-identity relationships. Rust macro invocations remain syntax evidence; JSX tags and compiler-expanded calls are not collected. HTML, SQL, and LaTeX have no built-in call-site or callee queries.
+- `.mod`, `.erb`, and `.bib` have built-in LSP routes but no AST grammar. `.sty` and `.cls` have AST support but no built-in LSP route. `.h` selects C by default; [project file associations](#cc-file-associations) can select C++ consistently for parsing and the LSP document language ID. `.jsx` selects JavaScript; `.tsx` selects TSX. Shell extensions all select the Bash grammar, not separate Zsh or KornShell grammars.
 
 AST search and point syntax inspection can work without LSP. New target handles require semantic readiness, including handles used for `code_graph` callee queries. Workspace and directory inventories can include any file type; inclusion does not establish language support.
 
 Unlisted extensions have no built-in route or grammar. A [custom LSP server](../supi-lsp/README.md#custom-server-configuration) can add semantic coverage, but it does not add AST support. See the [AST operation matrix](../supi-tree-sitter/README.md#language-support-matrix) and [LSP route matrix](../supi-lsp/README.md#built-in-route-matrix) for details. The source definitions are the [LSP defaults](../supi-lsp/src/config/defaults.json), [grammar map](../supi-tree-sitter/src/language.ts), [AST operation registry](../supi-tree-sitter/src/operation-support.ts), and [search-kind mapping](src/analysis/search/pattern.ts).
+
+### Reference-server verification
+
+The [language capability baseline](../../docs/conventions/code-language-baseline.md) has a separate [public-tool acceptance suite](__tests__/acceptance/language-baseline-harness.ts) and required Linux/macOS CI jobs. Its [server and toolchain pins](../../scripts/language-baseline/pins.json) are test combinations, not promises for every installed version. Qualification remains pending until both pinned jobs pass. Parser tests and configured routes do not qualify semantic support.
+
+Pyright remains the default Python route. The audited Pyright server does not provide implementation lookup. The Python acceptance case uses an explicit Basedpyright configuration; this is not an automatic fallback. Install Basedpyright yourself and configure it if you need that reference combination:
+
+```json
+{
+  "lsp": {
+    "servers": {
+      "python": {
+        "command": "basedpyright-langserver",
+        "args": ["--stdio"]
+      }
+    }
+  }
+}
+```
+
+Basedpyright uses `basedpyright.*` settings rather than most `python.*` settings, and has different diagnostic defaults. SuPi does not translate them. See the [server settings reference](https://docs.basedpyright.com/latest/configuration/language-server-settings/).
+
+Developers run `pnpm test:language-baseline:acceptance` with the pinned prerequisites. Missing prerequisites fail the command; they do not produce skipped passes. The CI setup installs test tools on isolated runners, not through the runtime extension.
 
 ### Search and output limits
 
 - An AST search has a 5,000 eligible-file limit and a 10-second deadline shared by file enumeration and analysis. These are not tool-call settings.
 - Below directory roots, AST search excludes hidden entries, dependency/build/cache directories, symlinks, non-regular files, configured `code-intelligence.exclude` paths, and files unsupported by the requested operation. It does **not** read `.gitignore`. Explicit roots are resolved and honored, including excluded paths and symlink roots. See the [scan policy](src/analysis/search/ast-scan.ts) for the exact directory list.
 - An exact file that does not support the requested AST operation is invalid. Results disclose policy exclusions, interrupted scans, provider limits, and omitted matches. No matches do not mean that unsupported files were searched.
+- Syntax recovery retains usable evidence as partial and reports the affected file and available error ranges. A recovered parse does not establish complete absence.
 - Tool text is truncated at Pi's default 2,000 lines or 50 KB. When this occurs, the full text is written to a temporary file and its path is returned. Result-list limits still apply to that full text.
 
 ## Status and settings
@@ -177,6 +204,7 @@ Project values override global values, which override defaults. Project configur
 | `code-intelligence.overviewEnabled` | `true` | Add the hidden overview; the choice is fixed for the session |
 | `code-intelligence.instructionFileNames` | `["CLAUDE.md", "AGENTS.md"]` | Ordered plain filenames for directory instruction discovery |
 | `code-intelligence.exclude` | `[]` | Gitignore-style patterns for automatic workspace navigation, LSP work, and broad AST searches; not an access control |
+| `code-intelligence.fileAssociations` | `[]` | Ordered C/C++ language rules in trusted project configuration only; edit the JSON file directly |
 | `lsp.servers.<language>.enabled` | Enabled unless `false` | Disable a language server |
 
 Example `.pi/supi/config.json`:
@@ -197,6 +225,25 @@ Example `.pi/supi/config.json`:
 ```
 
 Use `typescript`, `python`, `rust`, `go`, `c`, `ruby`, `java`, `kotlin`, `bash`, `html`, `sql`, `r`, or `latex` for built-in server keys (`cpp` aliases `c`). Server command and routing overrides are defined in the [LSP configuration reference](../supi-lsp/README.md#custom-server-configuration). `.pi-lsp.json` is not read. Only the boolean `true` enables the overview; non-boolean values do not enable it. The shared exclusion list uses gitignore syntax and project-over-global replacement. An explicit project `[]` clears configured patterns. `/supi-settings` shows the config path and says to reload or restart Pi after saving. LSP and AST work use saved exclusions after reload or restart. New workspace observations read the current exclusions. Exact file and explicitly selected directory requests remain available. An old `lsp.exclude` value reports a migration error and is not used.
+
+### C/C++ file associations
+
+Set ordered rules in the project's `.pi/supi/config.json`:
+
+```json
+{
+  "code-intelligence": {
+    "fileAssociations": [
+      { "pattern": "vendor/**/*.h", "language": "c" },
+      { "pattern": "**/*.h", "language": "cpp" }
+    ]
+  }
+}
+```
+
+The first matching rule wins; no match keeps the extension default. Patterns are case-sensitive globs over project-relative paths with `/` separators. They support `*`, `?`, `**`, character classes, and brace alternatives. Rules apply only to existing C-family suffixes and accept only `c` or `cpp`. A rule cannot add an AST grammar or change server routing. Invalid rules fail configuration loading. There is a limit of 64 rules and 512 characters per pattern.
+
+Global association values and untrusted project values do not apply. The workspace provider host captures one rule set for AST grammar selection and LSP document language IDs. Restart Pi, or release all sessions that share the host and reload, to use changed rules. This setting has no settings-overlay editor. It does not bypass exclusions or establish compiler flags.
 
 Directory orientation checks the path from the workspace root to the focused directory. It selects the first valid configured instruction file per directory, skips files already loaded by Pi or shown on the active branch, and shows at most 200 lines per file. Resolved instruction paths must stay inside the workspace. These snippets are tool output, not additions to Pi's system prompt.
 

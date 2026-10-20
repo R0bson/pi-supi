@@ -51,6 +51,7 @@ import { SemanticInputRequestRetryGuard } from "./client-request-enrollment.ts";
 import {
   SemanticInputBarrier,
   type SemanticInputDocument,
+  type SemanticInputRevision,
   type SemanticInputSnapshot,
   type SemanticInputUpdate,
 } from "./client-semantic-input-barrier.ts";
@@ -156,10 +157,10 @@ export class ClientDiagnostics {
 
   /** Fail closed when a semantic request observes a changed input generation. */
   assertSemanticInputsCurrent(
-    snapshot: SemanticInputSnapshot,
+    snapshot: SemanticInputRevision,
     control?: CodeRequestControl,
     contentOverrides?: ReadonlyMap<string, string>,
-  ): Promise<void> {
+  ): Promise<SemanticInputSnapshot> {
     throwIfCodeRequestInterrupted(control);
     return this.#inputBarrier.assertCurrent(snapshot, control, contentOverrides);
   }
@@ -168,6 +169,7 @@ export class ClientDiagnostics {
     return Array.from(this.#openDocs, ([uri, document]) => ({
       uri,
       filePath: uriToFile(uri),
+      version: document.version,
       content: document.content,
       contentFingerprint: document.contentFingerprint,
     }));
@@ -293,7 +295,7 @@ export class ClientDiagnostics {
     this.#cancelDiagnosticRequest(uri);
     this.#advanceInputRevision(false, false, "enrollment");
 
-    const languageId = detectLanguageId(filePath);
+    const languageId = detectLanguageId(filePath, this.host.fileAssociations);
     this.#waiters.cancelSettle();
     // A didOpen is a synchronization: pushes the server sends after it are
     // responses to the open and can become fresh evidence (ADR 0020).
@@ -797,7 +799,7 @@ export class ClientDiagnostics {
 
   async #verifyDiagnosticInputs(options: {
     result: CodeQueryResult<Diagnostic[]>;
-    snapshot: SemanticInputSnapshot;
+    snapshot: SemanticInputRevision;
     control: CodeRequestControl | undefined;
     contentOverrides: ReadonlyMap<string, string> | undefined;
     uri: string;

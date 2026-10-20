@@ -37,6 +37,23 @@ export function computeFileFingerprint(file: string): string {
   }
 }
 
+/** Check that request-scoped content evidence still matches the plan inputs. */
+export function validateSynchronizedContentFingerprints(
+  preconditions: WorkspaceEdit["documentPreconditions"],
+  fileFingerprints: readonly { file: string; fingerprint: string }[],
+): string | null {
+  const fingerprints = new Map(
+    fileFingerprints.map(({ file, fingerprint }) => [file, fingerprint]),
+  );
+  for (const precondition of preconditions ?? []) {
+    if (precondition.kind !== "open-document-content") continue;
+    if (fingerprints.get(precondition.file) !== precondition.fingerprint) {
+      return `File ${precondition.file} changed after the semantic input snapshot. Request a new rename plan.`;
+    }
+  }
+  return null;
+}
+
 /** Generate a stable plan id from operation details. */
 // biome-ignore lint/complexity/useMaxParams: plan id construction needs all positional args
 export function generatePlanId(

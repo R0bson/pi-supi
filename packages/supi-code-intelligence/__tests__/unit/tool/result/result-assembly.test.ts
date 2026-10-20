@@ -111,6 +111,7 @@ describe("canonical Tool result assembly", () => {
               { name: "callB", file: "/repo/src/a.ts", line: 3, character: 1 },
             ],
             depth: "direct",
+            recovery: null,
           },
           readNext: [],
         },
@@ -277,7 +278,8 @@ describe("canonical Tool result assembly", () => {
       displayLine: line,
       displayCharacter: 8,
       name,
-      kind: "Function",
+      kind: "Type",
+      nativeKind: "record",
       container: null,
       confidence: "semantic" as const,
       provenance: ["semantic", "structural"] as const,
@@ -294,6 +296,10 @@ describe("canonical Tool result assembly", () => {
         totalCount: 2,
         omittedCount: 1,
         unknownNestingCount: 1,
+        partial: {
+          reason: "Tree-sitter recovered syntax.",
+          errorRanges: [{ start: { line: 2, character: 0 }, end: { line: 2, character: 0 } }],
+        },
       },
       "/repo",
     );
@@ -304,6 +310,8 @@ describe("canonical Tool result assembly", () => {
       groupFile: "src/a.ts",
       groupDiscoveryProvenance: ["semantic", "structural"],
       groupUnknownNestingCount: 1,
+      groupPartialReason: "Tree-sitter recovered syntax.",
+      groupErrorRanges: [{ start: { line: 2, character: 0 }, end: { line: 2, character: 0 } }],
       targetCount: 2,
       omittedCount: 1,
       targets: [{ targetId: "tg-one" }],
@@ -313,10 +321,15 @@ describe("canonical Tool result assembly", () => {
       totalCount: 2,
       shownCount: 1,
       omittedCount: 1,
-      partialReason: null,
+      partialReason: "provider-limited",
+      partialMessage: "Tree-sitter recovered syntax.",
     });
     expect(markdown).toContain("Targets in `src/a.ts`");
+    expect(markdown).toContain(
+      "Partial discovery: Tree-sitter recovered syntax. Error locations: L3:1.",
+    );
     expect(markdown).toContain("tg-one");
+    expect(markdown).toContain("(`record`)");
     expect(markdown).toContain("provenance: semantic+structural");
     expect(markdown).toContain("1 declaration has unknown hierarchy");
     expect(markdown).not.toContain("tg-two");

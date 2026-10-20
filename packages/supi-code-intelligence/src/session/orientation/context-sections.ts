@@ -5,6 +5,7 @@ import {
   type CodeResult,
   type ConfidenceMode,
   isCodeRequestInterruption,
+  type SourceRange,
 } from "@mrclrchtr/supi-code-runtime/api";
 import { isWithinOrEqual } from "@mrclrchtr/supi-core/project";
 import type { WorkspaceLspRuntimeState } from "@mrclrchtr/supi-lsp/api";
@@ -37,6 +38,7 @@ export interface ListSectionInput<T> {
   readonly reason?: string | null;
   readonly unknownRemainder?: boolean;
   readonly partialReason?: EvidencePartialReason;
+  readonly errorRanges?: readonly SourceRange[];
 }
 
 /** Start a context-Oriented document with one factual focus title. */
@@ -64,6 +66,7 @@ export function appendList<T>(
         ...list.metadata,
         totalCount: null,
         partialReason: input.partialReason ?? "filesystem-error",
+        ...(input.reason ? { partialMessage: input.reason } : {}),
       }
     : list.metadata;
   builder.sections.push({
@@ -75,6 +78,7 @@ export function appendList<T>(
     provenance: input.provenance,
     evidenceLists: [{ ...metadata, key: input.key }],
     items: list.items.map((item) => ({ kind: "list-item", text: input.render(item) })),
+    ...(input.errorRanges ? { errorRanges: [...input.errorRanges] } : {}),
   });
 }
 
@@ -226,7 +230,7 @@ async function appendStructuralList<T>(
     });
     return;
   }
-  if (result.kind !== "success") {
+  if (result.kind !== "success" && result.kind !== "partial") {
     appendUnavailable(builder, {
       key: input.key,
       title: input.title,
@@ -235,6 +239,14 @@ async function appendStructuralList<T>(
     });
     return;
   }
+  const recoveryLocations =
+    result.kind === "partial"
+      ? result.errorRanges.map((range) => `L${range.start.line + 1}:${range.start.character + 1}`)
+      : [];
+  const recoveryReason =
+    result.kind === "partial"
+      ? `${result.reason}${recoveryLocations.length ? ` Error locations: ${recoveryLocations.join(", ")}.` : ""}`
+      : null;
   appendList(builder, {
     key: input.key,
     title: input.title,
@@ -242,6 +254,15 @@ async function appendStructuralList<T>(
     render: input.render,
     confidence: "structural",
     provenance: [{ source: "structural", capability: "tree-sitter" }],
+    ...(result.kind === "partial"
+      ? {
+          status: "partial" as const,
+          reason: recoveryReason,
+          unknownRemainder: true,
+          partialReason: "provider-limited" as const,
+          errorRanges: result.errorRanges,
+        }
+      : {}),
   });
 }
 

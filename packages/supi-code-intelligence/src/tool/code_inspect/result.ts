@@ -296,6 +296,17 @@ function sectionDetails<T>(
               capability: source.capability,
             },
           ],
+    ...(recoveryDetails(observation) ? { recovery: recoveryDetails(observation) } : {}),
+  };
+}
+
+function recoveryDetails(
+  observation: InspectObservation<unknown>,
+): InspectSectionDetails["recovery"] | undefined {
+  if (observation.kind !== "partial" || !observation.recovery) return undefined;
+  return {
+    file: observation.recovery.file,
+    errorRanges: [...observation.recovery.errorRanges],
   };
 }
 

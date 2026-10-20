@@ -1,4 +1,8 @@
-import type { CodeQueryResult, ConfidenceMode } from "@mrclrchtr/supi-code-runtime/api";
+import type {
+  CodeQueryResult,
+  ConfidenceMode,
+  SourceRange,
+} from "@mrclrchtr/supi-code-runtime/api";
 import type { SourcePointInput } from "./target-input.ts";
 
 /** Canonical code_inspect workflow input. */
@@ -7,7 +11,9 @@ export interface InspectWorkflowInput {
   readonly maxResults?: number;
 }
 
-export type InspectObservation<T> = CodeQueryResult<T>;
+export type InspectObservation<T> = CodeQueryResult<T> & {
+  readonly recovery?: { readonly file: string; readonly errorRanges: readonly SourceRange[] };
+};
 
 export interface InspectNode {
   readonly type: string;
@@ -28,6 +34,7 @@ export interface InspectNode {
 export interface InspectEnclosingSymbol {
   readonly name: string;
   readonly kind: string;
+  readonly nativeKind?: string;
   readonly startLine: number;
   readonly startCharacter: number;
   readonly endLine: number;

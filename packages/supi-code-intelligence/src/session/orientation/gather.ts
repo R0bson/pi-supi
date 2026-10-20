@@ -46,6 +46,13 @@ export interface SubstrateContext {
   hover: { contents: string; range?: SourceRange } | null;
   /** Best-effort LSP definition targets at the anchored position. `null` when unavailable. */
   definition: Array<{ uri: string; range: SourceRange }> | null;
+  /** Structural recovery from independently queried source operations. */
+  recovery: Array<{
+    operation: "nodeAt" | "outline" | "imports" | "exports";
+    file: string;
+    reason: string;
+    errorRanges: readonly SourceRange[];
+  }>;
 }
 
 /**
@@ -74,13 +81,22 @@ export async function gatherSubstrateContext(
   let exports: SubstrateContext["exports"] = [];
   let hover: SubstrateContext["hover"] = null;
   let definition: SubstrateContext["definition"] = null;
+  const recovery: SubstrateContext["recovery"] = [];
 
-  if (!provider) return { nodeInfo, outline, imports, exports, hover, definition: null };
+  if (!provider) return { nodeInfo, outline, imports, exports, hover, definition: null, recovery };
 
   try {
     if (positionStrict) {
       const nodeResult = await provider.nodeAt(relPath, line, character, requestControl);
-      if (nodeResult.kind === "success") {
+      if (nodeResult.kind === "partial") {
+        recovery.push({
+          operation: "nodeAt",
+          file: nodeResult.file,
+          reason: nodeResult.reason,
+          errorRanges: nodeResult.errorRanges,
+        });
+      }
+      if (nodeResult.kind === "success" || nodeResult.kind === "partial") {
         nodeInfo = {
           type: nodeResult.data.type,
           text: nodeResult.data.text,
@@ -92,7 +108,15 @@ export async function gatherSubstrateContext(
     }
 
     const outlineResult = await provider.outline(relPath, requestControl);
-    if (outlineResult.kind === "success") {
+    if (outlineResult.kind === "partial") {
+      recovery.push({
+        operation: "outline",
+        file: outlineResult.file,
+        reason: outlineResult.reason,
+        errorRanges: outlineResult.errorRanges,
+      });
+    }
+    if (outlineResult.kind === "success" || outlineResult.kind === "partial") {
       outline = outlineResult.data.map((item) => ({
         name: item.name,
         kind: item.kind,
@@ -102,12 +126,28 @@ export async function gatherSubstrateContext(
     }
 
     const importsResult = await provider.imports(relPath, requestControl);
-    if (importsResult.kind === "success") {
+    if (importsResult.kind === "partial") {
+      recovery.push({
+        operation: "imports",
+        file: importsResult.file,
+        reason: importsResult.reason,
+        errorRanges: importsResult.errorRanges,
+      });
+    }
+    if (importsResult.kind === "success" || importsResult.kind === "partial") {
       imports = importsResult.data;
     }
 
     const exportsResult = await provider.exports(relPath, requestControl);
-    if (exportsResult.kind === "success") {
+    if (exportsResult.kind === "partial") {
+      recovery.push({
+        operation: "exports",
+        file: exportsResult.file,
+        reason: exportsResult.reason,
+        errorRanges: exportsResult.errorRanges,
+      });
+    }
+    if (exportsResult.kind === "success" || exportsResult.kind === "partial") {
       exports = exportsResult.data.map((item) => ({
         name: item.name,
         kind: item.kind,
@@ -151,5 +191,5 @@ export async function gatherSubstrateContext(
     // Provider not available
   }
 
-  return { nodeInfo, outline, imports, exports, hover, definition };
+  return { nodeInfo, outline, imports, exports, hover, definition, recovery };
 }

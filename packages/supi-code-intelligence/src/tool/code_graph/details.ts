@@ -1,3 +1,4 @@
+import type { SourceRange } from "@mrclrchtr/supi-code-runtime/api";
 import type { EvidenceListMetadata } from "../../analysis/evidence.ts";
 import type { ReadNextItem } from "../../analysis/read-next.ts";
 import type { CalleeScope } from "../../analysis/relations/types.ts";
@@ -18,6 +19,7 @@ export interface GraphSectionDetails {
   externalCount: number;
   enclosingScope: CalleeScope | null;
   depth: "direct" | "deep" | null;
+  recovery?: { file: string; reason: string; errorRanges: readonly SourceRange[] } | null;
   /** Absent in older results whose display rows already contain full paths. */
   fileGroups?: GraphFileGroup[];
 }

@@ -2,6 +2,7 @@
 // Tree-sitter runtime — parser management, parse, and query services.
 
 import * as path from "node:path";
+import type { CFamilyFileAssociationResolver } from "@mrclrchtr/supi-code-runtime/api";
 import { resolveToolPath } from "@mrclrchtr/supi-core/path";
 import type { Language, Parser, Tree } from "web-tree-sitter";
 import { detectGrammar, resolveGrammarWasmPath } from "../language.ts";
@@ -12,6 +13,11 @@ import {
   type StructuralTimingEvent,
   startStructuralTiming,
 } from "../session/structural-timing.ts";
+import {
+  collectSyntaxErrorRanges,
+  hasSyntaxErrors,
+  withSyntaxCompleteness,
+} from "../syntax-errors.ts";
 import type { GrammarId, QueryCapture, TreeSitterResult } from "../types.ts";
 import {
   ParsedFileReadError,
@@ -39,6 +45,7 @@ interface ParserEntry {
 const QUERY_PARSED_FILE = Symbol("query-parsed-file");
 
 interface ParsedQueryInput {
+  readonly file: string;
   readonly grammarId: GrammarId;
   readonly tree: Tree;
   readonly source: string;
@@ -66,7 +73,13 @@ export class TreeSitterRuntime {
   constructor(
     private cwd: string,
     private onTiming?: (event: StructuralTimingEvent) => void,
+    private readonly fileAssociations?: CFamilyFileAssociationResolver,
   ) {}
+
+  /** Resolve one file's grammar under this runtime's immutable association snapshot. */
+  getGrammarForFile(filePath: string): GrammarId | undefined {
+    return detectGrammar(filePath, this.fileAssociations);
+  }
 
   /** Ensure web-tree-sitter Parser is initialized. */
   private async ensureParserInit(): Promise<typeof import("web-tree-sitter")> {
@@ -152,15 +165,21 @@ export class TreeSitterRuntime {
     filePath: string,
     control?: StructuralRequestControl,
   ): Promise<
-    TreeSitterResult<{
-      tree: Tree;
-      source: string;
-      resolvedPath: string;
-      grammarId: GrammarId;
-    }>
+    | {
+        kind: "success";
+        data: {
+          tree: Tree;
+          source: string;
+          resolvedPath: string;
+          grammarId: GrammarId;
+          hasSyntaxErrors: boolean;
+          errorRanges: ReturnType<typeof collectSyntaxErrorRanges>;
+        };
+      }
+    | Exclude<TreeSitterResult<never>, { kind: "success" | "partial" }>
   > {
     const resolvedPath = resolveToolPath(this.cwd, filePath);
-    const grammarId = detectGrammar(filePath);
+    const grammarId = detectGrammar(filePath, this.fileAssociations);
     if (!grammarId) {
       return {
         kind: "unsupported-language",
@@ -230,6 +249,8 @@ export class TreeSitterRuntime {
           source: parsed.source,
           resolvedPath: parsed.resolvedPath,
           grammarId: parsed.grammarId,
+          hasSyntaxErrors: hasSyntaxErrors(parsed.tree.rootNode),
+          errorRanges: collectSyntaxErrorRanges(parsed.tree.rootNode, parsed.source),
         },
       };
     } catch (err: unknown) {
@@ -281,7 +302,14 @@ export class TreeSitterRuntime {
 
     const { grammarId, tree, source } = parseResult.data;
     try {
-      return await this[QUERY_PARSED_FILE]({ grammarId, tree, source, queryString, control });
+      return await this[QUERY_PARSED_FILE]({
+        file: filePath,
+        grammarId,
+        tree,
+        source,
+        queryString,
+        control,
+      });
     } finally {
       tree.delete();
     }
@@ -289,7 +317,7 @@ export class TreeSitterRuntime {
 
   /** Execute a query against one caller-owned parsed tree without parsing again. */
   async [QUERY_PARSED_FILE](input: ParsedQueryInput): Promise<TreeSitterResult<QueryCapture[]>> {
-    const { grammarId, tree, source, queryString, control } = input;
+    const { file, grammarId, tree, source, queryString, control } = input;
     const validation = validateQueryString(queryString);
     if (validation) return validation;
 
@@ -344,7 +372,13 @@ export class TreeSitterRuntime {
         cache: execution.cache,
         finalPhase: "query-execution",
       });
-      return { kind: "success", data: execution.data };
+      return withSyntaxCompleteness({
+        data: execution.data,
+        file,
+        root: tree.rootNode,
+        source,
+        grammarId,
+      });
     } catch (err: unknown) {
       if (isStructuralRequestInterruption(err, control)) {
         finishStructuralTiming(timer, {

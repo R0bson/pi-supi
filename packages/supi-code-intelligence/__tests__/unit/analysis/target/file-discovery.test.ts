@@ -350,6 +350,46 @@ describe("file Target group discovery", () => {
     });
   });
 
+  it("keeps recovered structural targets and marks the group partial", async () => {
+    const structural: StructuralProvider = {
+      ...structuralProvider([]),
+      outline: async () => ({
+        kind: "partial",
+        file,
+        reason: "Tree-sitter recovered syntax.",
+        errorRanges: [
+          {
+            start: { line: 1, character: 3 },
+            end: { line: 1, character: 3 },
+          },
+        ],
+        data: [
+          {
+            name: "Box",
+            kind: "class",
+            startLine: 1,
+            startCharacter: 14,
+            endLine: 1,
+            endCharacter: 33,
+          },
+        ],
+      }),
+    };
+    const outcome = await resolveFileTargetGroup(file, cwd, { structural });
+    expect(outcome.kind).toBe("resolved");
+    if (outcome.kind !== "resolved") return;
+    expect(outcome.group.targets.map((target) => target.name)).toContain("Box");
+    expect(outcome.group.partial).toEqual({
+      reason: "Tree-sitter recovered syntax.",
+      errorRanges: [
+        {
+          start: { line: 1, character: 3 },
+          end: { line: 1, character: 3 },
+        },
+      ],
+    });
+  });
+
   it("returns unavailable discovery when neither provider can enumerate", async () => {
     const outcome = await resolveFileTargetGroup(file, cwd, {
       semantic: semanticProvider(null),

@@ -42,8 +42,7 @@ export function supportsCallSitesGrammar(grammarId: GrammarId): boolean {
 /**
  * Extract all call-site callee expressions from a file.
  *
- * Returns a deduplicated list of { name, startLine } for every call-site
- * captured by the grammar-specific query.
+ * Returns each written call-site expression once, keyed by its exact source range.
  */
 export async function extractCallSites(
   runtime: TreeSitterRuntime,
@@ -69,7 +68,7 @@ export async function extractCallSites(
   }
 
   const queryResult = await runtime.queryFile(filePath, queryStr, control);
-  if (queryResult.kind !== "success") return queryResult;
+  if (queryResult.kind !== "success" && queryResult.kind !== "partial") return queryResult;
 
   const captures = queryResult.data;
   const seen = new Set<string>();
@@ -80,13 +79,21 @@ export async function extractCallSites(
     const name = normalizeCallName(capture.text, grammarId, capture.nodeType);
     if (name.length === 0) continue;
 
-    // Deduplicate by name + line
-    const key = `${name}:${capture.range.startLine}`;
+    // Collapse duplicate captures only when they identify the same source range.
+    const key = `${capture.range.startLine}:${capture.range.startCharacter}:${capture.range.endLine}:${capture.range.endCharacter}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
-    matches.push({ name, startLine: capture.range.startLine });
+    matches.push({
+      name,
+      startLine: capture.range.startLine,
+      startCharacter: capture.range.startCharacter,
+      endLine: capture.range.endLine,
+      endCharacter: capture.range.endCharacter,
+    });
   }
 
-  return { kind: "success", data: matches };
+  return queryResult.kind === "partial"
+    ? { ...queryResult, data: matches }
+    : { kind: "success", data: matches };
 }

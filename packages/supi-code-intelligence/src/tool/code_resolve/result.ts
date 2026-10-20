@@ -125,13 +125,14 @@ function projectTargetGroup(
       totalCount: outcome.totalCount,
       shownCount: outcome.targets.length,
       omittedCount: outcome.omittedCount,
-      partialReason: null,
+      partialReason: outcome.partial ? ("provider-limited" as const) : null,
+      partialMessage: outcome.partial?.reason,
     },
   };
   return {
     key: "resolve.target-group",
     title: "Target group",
-    status: "complete",
+    status: outcome.partial ? "partial" : "complete",
     items: evidence.items,
     confidence: outcome.confidence,
     evidence: evidence.metadata,
@@ -140,6 +141,8 @@ function projectTargetGroup(
       groupFile: relative(cwd, outcome.file) || outcome.file,
       groupDiscoveryProvenance: [...outcome.discoveryProvenance],
       groupUnknownNestingCount: outcome.unknownNestingCount,
+      groupPartialReason: outcome.partial?.reason ?? null,
+      groupErrorRanges: outcome.partial?.errorRanges,
       confidence: outcome.confidence,
       targetCount: outcome.totalCount,
       omittedCount: evidence.metadata.omittedCount,
@@ -234,6 +237,7 @@ function toTargetDetails(target: Readonly<TargetStoreEntry>, cwd: string) {
     displayCharacter: target.displayCharacter,
     name: target.name,
     kind: target.kind,
+    ...(target.nativeKind ? { nativeKind: target.nativeKind } : {}),
     container: target.container,
     anchorKind: target.anchorKind,
     confidence: target.confidence,
@@ -252,7 +256,7 @@ function resolveDisplaySections(details: ResolveDetails): ToolDisplaySection[] {
         totalCount: details.targetCount,
         omittedCount: details.omittedCount,
         format: (target) =>
-          `${target.name ?? "anonymous"} (${target.kind ?? "unknown"}) — ${target.file}:${target.displayLine}:${target.displayCharacter} [${target.targetId}]`,
+          `${target.name ?? "anonymous"} (${target.nativeKind ?? target.kind ?? "unknown"}) — ${target.file}:${target.displayLine}:${target.displayCharacter} [${target.targetId}]`,
       }),
     ];
   }

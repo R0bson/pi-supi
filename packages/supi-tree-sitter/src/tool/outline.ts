@@ -2,29 +2,10 @@
 
 import { nodeToRange } from "../coordinates.ts";
 import type { SyntaxNodeLike } from "../syntax-node.ts";
-import type { OutlineItem } from "../types.ts";
+import type { GrammarId, OutlineItem } from "../types.ts";
 import { extractBindingIdentifiers } from "./js-binding-pattern.ts";
+import { expandExtractedItems, OUTLINE_DECLARATION_NODE_TYPES } from "./outline-expansion.ts";
 import { extractPolyglotOutlineItems } from "./outline-polyglot.ts";
-
-/** Node types that can be extracted directly as outline items. */
-const OUTLINE_DECLARATION_NODE_TYPES = new Set([
-  "function_declaration",
-  "generator_function_declaration",
-  "class_declaration",
-  "abstract_class_declaration",
-  "class",
-  "interface_declaration",
-  "type_alias_declaration",
-  "enum_declaration",
-  "method_definition",
-  "public_field_definition",
-  "variable_declarator",
-  "lexical_declaration",
-  "ambient_declaration",
-  "internal_module",
-  "module",
-  "function_signature",
-]);
 
 function sourceLineStarts(source: string): number[] {
   const starts = [0];
@@ -37,27 +18,55 @@ function sourceLineStarts(source: string): number[] {
 }
 
 /** Extract a structural outline from a parsed tree. */
-export function collectOutline(rootNode: SyntaxNodeLike, source: string): OutlineItem[] {
-  return collectItems(rootNode, source, sourceLineStarts(source));
+export function collectOutline(
+  rootNode: SyntaxNodeLike,
+  source: string,
+  grammarId?: GrammarId,
+): OutlineItem[] {
+  return collectItems(rootNode, source, sourceLineStarts(source), grammarId);
 }
 
 function collectItems(
   node: SyntaxNodeLike,
   source: string,
   lineStarts: readonly number[],
+  grammarId?: GrammarId,
 ): OutlineItem[] {
   const items: OutlineItem[] = [];
 
   for (const child of node.children) {
     const polyglotItems = extractPolyglotOutlineItems(child, source, lineStarts);
     if (polyglotItems) {
-      items.push(...polyglotItems);
+      items.push(
+        ...expandExtractedItems({
+          items: polyglotItems,
+          node: child,
+          source,
+          lineStarts,
+          grammarId,
+          extractItemsForNode: (nested) =>
+            extractPolyglotOutlineItems(nested, source, lineStarts) ?? extractItems(nested, source),
+        }),
+      );
       continue;
     }
 
     const extractedItems = extractItems(child, source);
-    if (extractedItems) items.push(...extractedItems);
-    else items.push(...collectItems(child, source, lineStarts));
+    if (extractedItems) {
+      items.push(
+        ...expandExtractedItems({
+          items: extractedItems,
+          node: child,
+          source,
+          lineStarts,
+          grammarId,
+          extractItemsForNode: (nested) =>
+            extractPolyglotOutlineItems(nested, source, lineStarts) ?? extractItems(nested, source),
+        }),
+      );
+    } else {
+      items.push(...collectItems(child, source, lineStarts, grammarId));
+    }
   }
 
   return items;
@@ -93,6 +102,7 @@ function extractItem(node: SyntaxNodeLike, source: string): OutlineItem | null {
     case "method_definition":
       return extractNamedDeclaration(node, "method", source);
     case "public_field_definition":
+    case "field_definition":
       return extractFieldDefinition(node, source);
     case "variable_declarator":
       return extractVariableDeclaratorItems(node, source)[0] ?? null;
@@ -113,7 +123,14 @@ function extractExportStatement(node: SyntaxNodeLike, source: string): OutlineIt
     if (decl.type === "lexical_declaration") return extractLexicalDeclarationItems(decl, source);
     if (decl.type === "ambient_declaration") return extractAmbientDeclarationItems(decl, source);
     const item = extractItem(decl, source);
-    if (item) return [item];
+    if (item) {
+      return [
+        {
+          ...item,
+          nativeKind: decl.type === "type_alias_declaration" ? "type alias" : item.kind,
+        },
+      ];
+    }
   }
 
   if (hasDefaultKeyword(node)) {
@@ -232,7 +249,11 @@ function collectClassMembers(node: SyntaxNodeLike, source: string): OutlineItem[
 
   const items: OutlineItem[] = [];
   for (const child of body.children) {
-    if (child.type !== "method_definition" && child.type !== "public_field_definition") continue;
+    if (
+      !["method_definition", "public_field_definition", "field_definition"].includes(child.type)
+    ) {
+      continue;
+    }
     const item = extractItem(child, source);
     if (item) items.push(item);
   }

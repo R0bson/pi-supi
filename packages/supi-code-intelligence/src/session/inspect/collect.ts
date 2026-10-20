@@ -59,19 +59,26 @@ async function collectNode(
       input.character,
       input.requestControl,
     );
-    if (result.kind !== "success") return unavailableCodeQuery(result.message);
-    return {
-      kind: "completed",
-      data: {
-        type: result.data.type,
-        text: result.data.text,
-        startLine: result.data.startLine,
-        startCharacter: result.data.startCharacter,
-        endLine: result.data.endLine,
-        endCharacter: result.data.endCharacter,
-        ancestry: result.data.ancestry ?? [],
-      },
+    if (result.kind !== "success" && result.kind !== "partial") {
+      return unavailableCodeQuery(result.message);
+    }
+    const data: InspectNode = {
+      type: result.data.type,
+      text: result.data.text,
+      startLine: result.data.startLine,
+      startCharacter: result.data.startCharacter,
+      endLine: result.data.endLine,
+      endCharacter: result.data.endCharacter,
+      ancestry: result.data.ancestry ?? [],
     };
+    return result.kind === "partial"
+      ? {
+          kind: "partial",
+          data,
+          reason: result.reason,
+          recovery: { file: result.file, errorRanges: result.errorRanges },
+        }
+      : { kind: "completed", data };
   } catch (error) {
     if (isCodeRequestInterruption(error, input.requestControl)) throw error;
     return unavailableCodeQuery(failureReason("Structural node lookup", error));
@@ -84,14 +91,21 @@ async function collectEnclosingSymbol(
   if (!input.structural) return unavailableCodeQuery("No structural outline provider is active.");
   try {
     const result = await input.structural.outline(input.file, input.requestControl);
-    if (result.kind !== "success") return unavailableCodeQuery(result.message);
-    return {
-      kind: "completed",
-      data: narrowestEnclosingSymbol(result.data, {
-        line: input.line,
-        character: input.character,
-      }),
-    };
+    if (result.kind !== "success" && result.kind !== "partial") {
+      return unavailableCodeQuery(result.message);
+    }
+    const symbol = narrowestEnclosingSymbol(result.data, {
+      line: input.line,
+      character: input.character,
+    });
+    return result.kind === "partial"
+      ? {
+          kind: "partial",
+          data: symbol,
+          reason: result.reason,
+          recovery: { file: result.file, errorRanges: result.errorRanges },
+        }
+      : { kind: "completed", data: symbol };
   } catch (error) {
     if (isCodeRequestInterruption(error, input.requestControl)) throw error;
     return unavailableCodeQuery(failureReason("Structural outline lookup", error));
@@ -209,6 +223,7 @@ function flattenOutline(
     const candidate: OutlineCandidate = {
       name: item.name,
       kind: item.kind,
+      ...(item.nativeKind ? { nativeKind: item.nativeKind } : {}),
       startLine: item.startLine,
       startCharacter: item.startCharacter,
       endLine: item.endLine,

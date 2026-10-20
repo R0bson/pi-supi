@@ -29,6 +29,7 @@ import {
   generatePlanId,
   isPlanFresh,
   type RefactorPlan,
+  validateSynchronizedContentFingerprints,
 } from "./refactor-plans.ts";
 import {
   PUBLIC_REFACTOR_OPERATION_NAMES,
@@ -189,6 +190,17 @@ async function planResolvedRefactor(
     result.authorizedMutationRoots,
   );
   if (authority.kind === "unavailable") return authority;
+  const fileFingerprints = collectFileFingerprints(
+    result.edits.edits,
+    sectionRename.sourceFingerprint
+      ? { file, fingerprint: sectionRename.sourceFingerprint }
+      : undefined,
+  );
+  const snapshotError = validateSynchronizedContentFingerprints(
+    result.edits.documentPreconditions,
+    fileFingerprints,
+  );
+  if (snapshotError) return { kind: "unavailable", reason: snapshotError };
 
   const plan: RefactorPlan = {
     id: generatePlanId(
@@ -206,12 +218,7 @@ async function planResolvedRefactor(
     edits: result.edits,
     evidenceSource: sectionRename.evidenceSource,
     authorizedMutationRoots: authority.canonicalRoots,
-    fileFingerprints: collectFileFingerprints(
-      result.edits.edits,
-      sectionRename.sourceFingerprint
-        ? { file, fingerprint: sectionRename.sourceFingerprint }
-        : undefined,
-    ),
+    fileFingerprints,
     createdAt: Date.now(),
   };
   deps.storePlan(plan);

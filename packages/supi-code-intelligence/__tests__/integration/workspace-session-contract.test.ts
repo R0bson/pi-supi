@@ -9,21 +9,125 @@ import {
 } from "../helpers/real-substrate-workspace.ts";
 
 const TYPESCRIPT_AST_EXPECTATIONS = [
-  { kind: "definition", resultKind: "class", query: "ContractWidget", line: 7 },
-  { kind: "import", resultKind: "import", query: "node:path", line: 1 },
-  { kind: "export", resultKind: "class", query: "ContractWidget", line: 7 },
-  { kind: "call", resultKind: "call", query: "join", line: 13 },
-  { kind: "type", resultKind: "type", query: "ContractAlias", line: 2 },
-  { kind: "interface", resultKind: "interface", query: "Contract", line: 3 },
-  { kind: "class", resultKind: "class", query: "ContractWidget", line: 7 },
-  { kind: "method", resultKind: "method", query: "renderContract", line: 8 },
-  { kind: "enum", resultKind: "enum", query: "ContractState", line: 6 },
+  {
+    kind: "definition",
+    resultKind: "class",
+    query: "ContractWidget",
+    line: 7,
+    startCharacter: 8,
+    endLine: 11,
+    endCharacter: 2,
+    commonKind: "class",
+    nativeKind: "class",
+  },
+  {
+    kind: "import",
+    resultKind: "import",
+    query: "node:path",
+    line: 1,
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 34,
+  },
+  {
+    kind: "export",
+    resultKind: "class",
+    query: "ContractWidget",
+    line: 7,
+    startCharacter: 8,
+    endLine: 11,
+    endCharacter: 2,
+  },
+  {
+    kind: "call",
+    resultKind: "call",
+    query: "join",
+    line: 13,
+    startCharacter: 10,
+    endLine: 13,
+    endCharacter: 14,
+  },
+  {
+    kind: "type",
+    resultKind: "type alias",
+    query: "ContractAlias",
+    line: 2,
+    startCharacter: 8,
+    endLine: 2,
+    endCharacter: 44,
+    commonKind: "type",
+    nativeKind: "type alias",
+  },
+  {
+    kind: "interface",
+    resultKind: "interface",
+    query: "Contract",
+    line: 3,
+    startCharacter: 8,
+    endLine: 5,
+    endCharacter: 2,
+    commonKind: "interface",
+    nativeKind: "interface",
+  },
+  {
+    kind: "class",
+    resultKind: "class",
+    query: "ContractWidget",
+    line: 7,
+    startCharacter: 8,
+    endLine: 11,
+    endCharacter: 2,
+    commonKind: "class",
+    nativeKind: "class",
+  },
+  {
+    kind: "method",
+    resultKind: "method",
+    query: "renderContract",
+    line: 8,
+    startCharacter: 3,
+    endLine: 10,
+    endCharacter: 4,
+    commonKind: "method",
+    nativeKind: "method",
+  },
+  {
+    kind: "enum",
+    resultKind: "enum",
+    query: "ContractState",
+    line: 6,
+    startCharacter: 8,
+    endLine: 6,
+    endCharacter: 46,
+    commonKind: "enum",
+    nativeKind: "enum",
+  },
 ] as const;
 
 const PYTHON_AST_EXPECTATIONS = [
-  { kind: "call", supported: true, query: "pythonHelper", resultKind: "call", line: 2 },
-  { kind: "definition", supported: true, query: "invoke_python", resultKind: "function", line: 1 },
-  { kind: "import", supported: false, query: "pythonHelper" },
+  {
+    kind: "call",
+    supported: true,
+    query: "pythonHelper",
+    resultKind: "call",
+    line: 2,
+    startCharacter: 12,
+    endLine: 2,
+    endCharacter: 24,
+  },
+  {
+    kind: "definition",
+    supported: true,
+    query: "invoke_python",
+    resultKind: "function",
+    line: 1,
+    startCharacter: 1,
+    endLine: 2,
+    endCharacter: 26,
+    commonKind: "function",
+    nativeKind: "function",
+  },
+  { kind: "import", supported: true, query: "pythonHelper" },
   { kind: "export", supported: false, query: "pythonHelper" },
   { kind: "type", supported: true, query: "pythonHelper" },
   { kind: "interface", supported: true, query: "pythonHelper" },
@@ -33,20 +137,66 @@ const PYTHON_AST_EXPECTATIONS = [
 ] as const;
 
 const TRANCHE_TWO_AST_EXPECTATIONS = [
-  { file: CONTRACT_FIXTURE.cpp, query: "NativeModel", resultKind: "struct" },
-  { file: CONTRACT_FIXTURE.java, query: "JavaModel", resultKind: "record" },
-  { file: CONTRACT_FIXTURE.kotlin, query: "KotlinModel", resultKind: "object" },
+  {
+    file: CONTRACT_FIXTURE.cpp,
+    query: "NativeModel",
+    resultKind: "struct",
+    startCharacter: 17,
+    endLine: 1,
+    endCharacter: 53,
+    commonKind: "struct",
+    nativeKind: "struct",
+  },
+  {
+    file: CONTRACT_FIXTURE.java,
+    query: "JavaModel",
+    resultKind: "record",
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 43,
+    commonKind: "record",
+    nativeKind: "record",
+  },
+  {
+    file: CONTRACT_FIXTURE.kotlin,
+    query: "KotlinModel",
+    resultKind: "object",
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 36,
+  },
 ] as const;
 
 const TRANCHE_THREE_AST_EXPECTATIONS = [
-  { file: CONTRACT_FIXTURE.ruby, kind: "class", query: "RubyModel", resultKind: "class", line: 1 },
-  { file: CONTRACT_FIXTURE.ruby, kind: "method", query: "run", resultKind: "method", line: 2 },
+  {
+    file: CONTRACT_FIXTURE.ruby,
+    kind: "class",
+    query: "RubyModel",
+    resultKind: "class",
+    line: 1,
+    startCharacter: 1,
+    endLine: 3,
+    endCharacter: 4,
+  },
+  {
+    file: CONTRACT_FIXTURE.ruby,
+    kind: "method",
+    query: "run",
+    resultKind: "method",
+    line: 2,
+    startCharacter: 3,
+    endLine: 2,
+    endCharacter: 15,
+  },
   {
     file: CONTRACT_FIXTURE.bash,
     kind: "definition",
     query: "shell_task",
     resultKind: "function",
     line: 1,
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 26,
   },
   {
     file: CONTRACT_FIXTURE.r,
@@ -54,6 +204,9 @@ const TRANCHE_THREE_AST_EXPECTATIONS = [
     query: "r_task",
     resultKind: "function",
     line: 1,
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 23,
   },
 ] as const;
 
@@ -64,6 +217,9 @@ const TRANCHE_FOUR_AST_EXPECTATIONS = [
     query: "contract-root",
     resultKind: "element",
     line: 1,
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 33,
   },
   {
     file: CONTRACT_FIXTURE.sql,
@@ -71,6 +227,9 @@ const TRANCHE_FOUR_AST_EXPECTATIONS = [
     query: "contract_records",
     resultKind: "table",
     line: 1,
+    startCharacter: 1,
+    endLine: 1,
+    endCharacter: 42,
   },
   {
     file: CONTRACT_FIXTURE.sql,
@@ -78,6 +237,9 @@ const TRANCHE_FOUR_AST_EXPECTATIONS = [
     query: "contract_state",
     resultKind: "enum",
     line: 2,
+    startCharacter: 1,
+    endLine: 2,
+    endCharacter: 45,
   },
 ] as const;
 
@@ -99,7 +261,8 @@ describe("WorkspaceCodeIntelligenceSession real-substrate contract", () => {
 
   it.each(TYPESCRIPT_AST_EXPECTATIONS)(
     "finds TypeScript $kind evidence through the session boundary",
-    async ({ kind, resultKind, query, line }) => {
+    async (expectation) => {
+      const { kind, resultKind, query, line } = expectation;
       const result = astResult(
         await getWorkspace().session.find({
           query,
@@ -111,11 +274,17 @@ describe("WorkspaceCodeIntelligenceSession real-substrate contract", () => {
 
       expect(result.scan.complete).toBe(true);
       expect(result.partialReason).toBeNull();
-      expect(result.matches).toContainEqual({
+      expectAstMatch(result, {
         file: CONTRACT_FIXTURE.contracts,
         name: query,
         kind: resultKind,
         line,
+        startCharacter: expectation.startCharacter,
+        endLine: expectation.endLine,
+        endCharacter: expectation.endCharacter,
+        ...("commonKind" in expectation
+          ? { commonKind: expectation.commonKind, nativeKind: expectation.nativeKind }
+          : {}),
       });
     },
   );
@@ -133,11 +302,17 @@ describe("WorkspaceCodeIntelligenceSession real-substrate contract", () => {
       if (expectation.supported) {
         const result = astResult(outcome);
         if ("resultKind" in expectation) {
-          expect(result.matches).toContainEqual({
+          expectAstMatch(result, {
             file: CONTRACT_FIXTURE.python,
             name: expectation.query,
             kind: expectation.resultKind,
             line: expectation.line,
+            startCharacter: expectation.startCharacter,
+            endLine: expectation.endLine,
+            endCharacter: expectation.endCharacter,
+            ...("commonKind" in expectation
+              ? { commonKind: expectation.commonKind, nativeKind: expectation.nativeKind }
+              : {}),
           });
         } else {
           expect(result.matches).toEqual([]);
@@ -155,12 +330,24 @@ describe("WorkspaceCodeIntelligenceSession real-substrate contract", () => {
 
   it.each(TRANCHE_TWO_AST_EXPECTATIONS)(
     "finds $resultKind type evidence in $file",
-    async ({ file, query, resultKind }) => {
+    async (expectation) => {
+      const { file, query, resultKind } = expectation;
       const result = astResult(
         await getWorkspace().session.find({ query, mode: "ast", kind: "type", scope: [file] }),
       );
 
-      expect(result.matches).toContainEqual({ file, name: query, kind: resultKind, line: 1 });
+      expectAstMatch(result, {
+        file,
+        name: query,
+        kind: resultKind,
+        line: 1,
+        startCharacter: expectation.startCharacter,
+        endLine: expectation.endLine,
+        endCharacter: expectation.endCharacter,
+        ...("commonKind" in expectation
+          ? { commonKind: expectation.commonKind, nativeKind: expectation.nativeKind }
+          : {}),
+      });
       expect(result.partialReason).toBeNull();
       expect(result.scan.complete).toBe(true);
     },
@@ -168,16 +355,20 @@ describe("WorkspaceCodeIntelligenceSession real-substrate contract", () => {
 
   it.each([...TRANCHE_THREE_AST_EXPECTATIONS, ...TRANCHE_FOUR_AST_EXPECTATIONS])(
     "finds $resultKind $kind evidence in $file",
-    async ({ file, kind, query, resultKind, line }) => {
+    async (expectation) => {
+      const { file, kind, query, resultKind, line } = expectation;
       const result = astResult(
         await getWorkspace().session.find({ query, mode: "ast", kind, scope: [file] }),
       );
 
-      expect(result.matches).toContainEqual({
+      expectAstMatch(result, {
         file,
         name: query,
         kind: resultKind,
         line,
+        startCharacter: expectation.startCharacter,
+        endLine: expectation.endLine,
+        endCharacter: expectation.endCharacter,
       });
       expect(result.partialReason).toBeNull();
       expect(result.scan.complete).toBe(true);
@@ -402,6 +593,31 @@ describe("WorkspaceCodeIntelligenceSession real-substrate contract", () => {
     return workspace;
   }
 });
+
+function expectAstMatch(
+  result: ReturnType<typeof astResult>,
+  expected: {
+    file: string;
+    name: string;
+    kind: string;
+    line: number;
+    startCharacter: number;
+    endLine: number;
+    endCharacter: number;
+    commonKind?: string;
+    nativeKind?: string;
+  },
+): void {
+  const match = result.matches.find(
+    (candidate) =>
+      candidate.file === expected.file &&
+      candidate.name === expected.name &&
+      candidate.kind === expected.kind &&
+      candidate.line === expected.line,
+  );
+  expect(match, JSON.stringify(result.matches)).toBeDefined();
+  expect(match).toMatchObject(expected);
+}
 
 function astResult(outcome: FindOutcome) {
   expect(outcome.kind).toBe("completed");

@@ -32,7 +32,8 @@ function renderResolved(
   cwd: string,
 ): string {
   const relFile = relative(cwd, target.file) || target.file;
-  const kind = target.kind ? ` \`${target.kind}\`` : "";
+  const displayKind = target.nativeKind ?? target.kind;
+  const kind = displayKind ? ` \`${displayKind}\`` : "";
   const name = target.name ? ` **${target.name}**${kind}` : "";
   const lines = [
     `Resolved${name}:`,
@@ -70,22 +71,41 @@ function renderTargetGroup(details: ResolveDetails): string {
     `- Discovery provenance: \`${discovery}\``,
   ];
   appendUnknownHierarchyDisclosure(lines, details.groupUnknownNestingCount ?? 0);
+  appendGroupRecoveryDisclosure(lines, details);
   lines.push("");
-  if (details.targets.length === 0) {
-    lines.push("No declarations were reported for this file.");
-  } else {
-    lines.push(declarationCountHeading(details.targetCount), "");
-    for (const target of details.targets) {
-      const kind = target.kind ? ` (\`${target.kind}\`)` : "";
-      const container = target.container ? ` in \`${target.container}\`` : "";
-      lines.push(
-        `- **${target.name ?? "anonymous"}**${kind}${container} — \`${target.file}:${target.displayLine}:${target.displayCharacter}\``,
-        `  Target ID: \`${target.targetId}\` (${target.anchorKind} anchor, ${target.confidence}, provenance: ${target.provenance.join("+")})`,
-      );
-    }
-  }
+  appendTargetGroupItems(lines, details);
   appendDisclosure(lines, details);
   return lines.join("\n");
+}
+
+function appendTargetGroupItems(lines: string[], details: ResolveDetails): void {
+  if (details.targets.length === 0) {
+    lines.push(
+      details.groupPartialReason
+        ? "No declarations were collected before structural recovery limited discovery."
+        : "No declarations were reported for this file.",
+    );
+    return;
+  }
+  lines.push(declarationCountHeading(details.targetCount), "");
+  for (const target of details.targets) {
+    const displayKind = target.nativeKind ?? target.kind;
+    const kind = displayKind ? ` (\`${displayKind}\`)` : "";
+    const container = target.container ? ` in \`${target.container}\`` : "";
+    lines.push(
+      `- **${target.name ?? "anonymous"}**${kind}${container} — \`${target.file}:${target.displayLine}:${target.displayCharacter}\``,
+      `  Target ID: \`${target.targetId}\` (${target.anchorKind} anchor, ${target.confidence}, provenance: ${target.provenance.join("+")})`,
+    );
+  }
+}
+
+function appendGroupRecoveryDisclosure(lines: string[], details: ResolveDetails): void {
+  if (!details.groupPartialReason) return;
+  const locations = (details.groupErrorRanges ?? []).map(
+    (range) => `L${range.start.line + 1}:${range.start.character + 1}`,
+  );
+  const errors = locations.length ? ` Error locations: ${locations.join(", ")}.` : "";
+  lines.push(`- Partial discovery: ${details.groupPartialReason}${errors}`);
 }
 
 function declarationCountHeading(count: number): string {

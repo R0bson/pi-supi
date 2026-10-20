@@ -1,3 +1,4 @@
+import type { CFamilyFileAssociationResolver } from "@mrclrchtr/supi-code-runtime/api";
 import type { DiagnosticRequestAdapter } from "./client-diagnostic-request.ts";
 import type { NormalizedDocumentSync } from "./client-document-sync.ts";
 
@@ -7,6 +8,8 @@ export interface ClientDiagnosticsHost {
   server: string;
   /** Absolute workspace root, for debug-telemetry identity. */
   cwd?: string;
+  /** Immutable workspace association snapshot used for didOpen document IDs. */
+  fileAssociations?: CFamilyFileAssociationResolver;
   isOperational(): boolean;
   /** Native pull and server-specific request evidence share this priority adapter. */
   diagnosticRequestAdapter: DiagnosticRequestAdapter;

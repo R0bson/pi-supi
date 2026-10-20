@@ -1,9 +1,17 @@
-import { fileURLToPath } from "node:url";
 import type {
   DocumentEditPrecondition,
   FileEdit,
   RefactorResult,
 } from "@mrclrchtr/supi-code-runtime/api";
+import {
+  asRecord,
+  getResourceOperationKind,
+  hasNoInheritedAllowedKeys,
+  hasOnlyKeys,
+  normalizeTextEdits,
+  parseTextDocumentEdit,
+  toFilePath,
+} from "./semantic-edit-protocol.ts";
 
 /** A complete semantic server response that can contain precise text edits. */
 export type SemanticEditResponse =
@@ -11,8 +19,15 @@ export type SemanticEditResponse =
   | { readonly kind: "code-action"; readonly action: unknown };
 
 /** Provider route and client document state used to establish mutation preconditions. */
+export interface SemanticDocumentSnapshotEvidence {
+  readonly version: number;
+  readonly contentFingerprint: string;
+  readonly diskContentFingerprint: string;
+}
+
 export interface SemanticEditNormalizationContext {
   getOpenDocumentVersion(file: string): number | null;
+  getSynchronizedDocumentSnapshot?(file: string): SemanticDocumentSnapshotEvidence | null;
   authorizedMutationRoots: readonly string[];
 }
 
@@ -133,20 +148,46 @@ function normalizeChanges(
   }
 
   const edits: FileEdit[] = [];
+  const documentPreconditions: DocumentEditPrecondition[] = [];
   for (const uri of Object.keys(changes).sort((left, right) => left.localeCompare(right))) {
-    const file = toFilePath(uri);
-    const textEdits = changes[uri];
-    if (!file) {
-      return { kind: "unavailable", reason: `Workspace edit URI "${uri}" is not a file URI.` };
-    }
-    if (!Array.isArray(textEdits)) {
-      return { kind: "unavailable", reason: "Workspace edit contains malformed changes." };
-    }
-    const normalized = normalizeTextEdits(file, textEdits);
-    if (normalized.kind === "unavailable") return normalized;
-    edits.push(...normalized.edits);
+    const result = normalizeChangesEntry(uri, changes[uri], context);
+    if (result.kind === "unavailable") return result;
+    edits.push(...result.edits);
+    if (result.precondition) documentPreconditions.push(result.precondition);
   }
-  return preciseOrEmpty(edits, context);
+  return preciseOrEmpty(
+    edits,
+    context,
+    documentPreconditions.length > 0 ? documentPreconditions : undefined,
+  );
+}
+
+function normalizeChangesEntry(
+  uri: string,
+  value: unknown,
+  context: SemanticEditNormalizationContext,
+):
+  | { kind: "precise"; edits: FileEdit[]; precondition?: DocumentEditPrecondition }
+  | { kind: "unavailable"; reason: string } {
+  const file = toFilePath(uri);
+  if (!file) {
+    return { kind: "unavailable", reason: `Workspace edit URI "${uri}" is not a file URI.` };
+  }
+  if (!Array.isArray(value)) {
+    return { kind: "unavailable", reason: "Workspace edit contains malformed changes." };
+  }
+  const normalized = normalizeTextEdits(file, value);
+  if (normalized.kind === "unavailable") return normalized;
+  if (!context.getSynchronizedDocumentSnapshot) {
+    return { kind: "precise", edits: normalized.edits };
+  }
+  const precondition = establishSynchronizedContentPrecondition(file, context, false);
+  if (typeof precondition === "string") return { kind: "unavailable", reason: precondition };
+  return {
+    kind: "precise",
+    edits: normalized.edits,
+    ...(precondition ? { precondition } : {}),
+  };
 }
 
 function normalizeDocumentChanges(
@@ -204,37 +245,6 @@ function normalizeDocumentChange(
     : { kind: "precise", edits: normalized.edits, precondition };
 }
 
-function parseTextDocumentEdit(edit: Record<string, unknown> | null): {
-  edit: Record<"textDocument" | "edits", unknown> & { edits: unknown[] };
-  textDocument: Record<string, unknown>;
-} | null {
-  const textDocument = asRecord(edit?.textDocument);
-  if (
-    !edit ||
-    !Object.hasOwn(edit, "textDocument") ||
-    !Object.hasOwn(edit, "edits") ||
-    !hasOnlyKeys(edit, ["textDocument", "edits"]) ||
-    !hasNoInheritedAllowedKeys(edit, ["textDocument", "edits"]) ||
-    !textDocument ||
-    !Object.hasOwn(textDocument, "uri") ||
-    !hasOnlyKeys(textDocument, ["uri", "version"]) ||
-    !hasNoInheritedAllowedKeys(textDocument, ["uri", "version"]) ||
-    !Array.isArray(edit.edits)
-  ) {
-    return null;
-  }
-  return {
-    edit: edit as Record<"textDocument" | "edits", unknown> & { edits: unknown[] },
-    textDocument,
-  };
-}
-
-function getResourceOperationKind(value: Record<string, unknown> | null): string | null {
-  return value && (value.kind === "create" || value.kind === "rename" || value.kind === "delete")
-    ? value.kind
-    : null;
-}
-
 function establishPrecondition(
   file: string,
   version: unknown,
@@ -242,9 +252,13 @@ function establishPrecondition(
 ): DocumentEditPrecondition | string {
   const openVersion = context.getOpenDocumentVersion(file);
   if (version === null) {
-    return openVersion === null
-      ? { file, kind: "disk-content" }
-      : `Document change for "${file}" requires disk content, but the document is open.`;
+    if (openVersion === null) {
+      return context.getSynchronizedDocumentSnapshot?.(file)
+        ? `Document change for "${file}" is no longer open after its synchronized snapshot.`
+        : { file, kind: "disk-content" };
+    }
+    const precondition = establishSynchronizedContentPrecondition(file, context, true, openVersion);
+    return precondition ?? `Document change for "${file}" has no verified content precondition.`;
   }
   if (!Number.isInteger(version) || (version as number) < 0) {
     return `Document change for "${file}" has an invalid version.`;
@@ -255,46 +269,48 @@ function establishPrecondition(
   if (openVersion !== version) {
     return `Document change version for "${file}" does not match the open document.`;
   }
+  if (context.getSynchronizedDocumentSnapshot?.(file)) {
+    return (
+      establishSynchronizedContentPrecondition(file, context, true, version as number) ??
+      `Document change for "${file}" has no verified content precondition.`
+    );
+  }
   return { file, kind: "open-document-version", version: version as number };
 }
 
-function normalizeTextEdits(
+function establishSynchronizedContentPrecondition(
   file: string,
-  values: unknown[],
-): { kind: "precise"; edits: FileEdit[] } | { kind: "unavailable"; reason: string } {
-  const edits: FileEdit[] = [];
-  for (const value of values) {
-    const textEdit = asRecord(value);
-    if (textEdit && Object.hasOwn(textEdit, "snippet")) {
-      return { kind: "unavailable", reason: "Workspace edit contains a snippet text edit." };
+  context: SemanticEditNormalizationContext,
+  required: boolean,
+  expectedVersion?: number,
+): DocumentEditPrecondition | null | string {
+  const openVersion = context.getOpenDocumentVersion(file);
+  const snapshot = context.getSynchronizedDocumentSnapshot?.(file);
+  if (openVersion === null) {
+    if (required || snapshot) {
+      return `Document change for "${file}" requires verified synchronized content, but the document is closed.`;
     }
-    if (textEdit && Object.hasOwn(textEdit, "annotationId")) {
-      return { kind: "unavailable", reason: "Workspace edit contains a text edit annotation." };
-    }
-    const range = asRecord(textEdit?.range);
-    const start = asPosition(range?.start);
-    const end = asPosition(range?.end);
-    if (
-      !textEdit ||
-      !Object.hasOwn(textEdit, "range") ||
-      !Object.hasOwn(textEdit, "newText") ||
-      !hasOnlyKeys(textEdit, ["range", "newText"]) ||
-      !hasNoInheritedAllowedKeys(textEdit, ["range", "newText", "snippet", "annotationId"]) ||
-      !range ||
-      !Object.hasOwn(range, "start") ||
-      !Object.hasOwn(range, "end") ||
-      !hasOnlyKeys(range, ["start", "end"]) ||
-      !hasNoInheritedAllowedKeys(range, ["start", "end"]) ||
-      !start ||
-      !end ||
-      isBefore(end, start) ||
-      typeof textEdit.newText !== "string"
-    ) {
-      return { kind: "unavailable", reason: "Workspace edit contains a malformed text edit." };
-    }
-    edits.push({ file, range: { start, end }, newText: textEdit.newText });
+    return null;
   }
-  return { kind: "precise", edits };
+  if (!snapshot) {
+    return required
+      ? `Document change for "${file}" requires a verified synchronized content snapshot, but the document is open without one.`
+      : `Open document "${file}" has no verified synchronized content snapshot.`;
+  }
+  if (
+    snapshot.version !== openVersion ||
+    (expectedVersion !== undefined && snapshot.version !== expectedVersion) ||
+    snapshot.contentFingerprint.length === 0 ||
+    snapshot.contentFingerprint !== snapshot.diskContentFingerprint
+  ) {
+    return `Document change for "${file}" does not match its synchronized content snapshot.`;
+  }
+  return {
+    file,
+    kind: "open-document-content",
+    version: snapshot.version,
+    fingerprint: snapshot.contentFingerprint,
+  };
 }
 
 function preciseOrEmpty(
@@ -315,52 +331,4 @@ function preciseOrEmpty(
   return documentPreconditions
     ? { kind: "precise", edits: { edits, documentPreconditions }, authorizedMutationRoots }
     : { kind: "precise", edits: { edits }, authorizedMutationRoots };
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
-  const allowedKeys = new Set(allowed);
-  return Object.keys(value).every((key) => allowedKeys.has(key));
-}
-
-function hasNoInheritedAllowedKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-): boolean {
-  return allowed.every((key) => !(key in value) || Object.hasOwn(value, key));
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function asPosition(value: unknown): { line: number; character: number } | null {
-  const position = asRecord(value);
-  return position &&
-    Object.hasOwn(position, "line") &&
-    Object.hasOwn(position, "character") &&
-    hasOnlyKeys(position, ["line", "character"]) &&
-    Number.isInteger(position.line) &&
-    (position.line as number) >= 0 &&
-    Number.isInteger(position.character) &&
-    (position.character as number) >= 0
-    ? { line: position.line as number, character: position.character as number }
-    : null;
-}
-
-function isBefore(
-  left: { line: number; character: number },
-  right: { line: number; character: number },
-): boolean {
-  return left.line < right.line || (left.line === right.line && left.character < right.character);
-}
-
-function toFilePath(uri: string): string | null {
-  try {
-    const parsed = new URL(uri);
-    return parsed.protocol === "file:" ? fileURLToPath(parsed) : null;
-  } catch {
-    return null;
-  }
 }

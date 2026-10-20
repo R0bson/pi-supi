@@ -1,9 +1,17 @@
-import type { CodeQueryPartialMetadata, ConfidenceMode } from "@mrclrchtr/supi-code-runtime/api";
+import type {
+  CodeQueryPartialMetadata,
+  ConfidenceMode,
+  SourceRange,
+} from "@mrclrchtr/supi-code-runtime/api";
 import type { CapabilityWarningReport } from "../../analysis/capability/capability-warnings.ts";
 import type { EvidenceListMetadata } from "../../analysis/evidence.ts";
 import type { InstructionFilesMetadata } from "../../analysis/instruction-files.ts";
 import type { ReadNextItem } from "../../analysis/read-next.ts";
-import type { StructuredScanSummary } from "../../analysis/search/pattern.ts";
+import type {
+  StructuredFailure,
+  StructuredMatch,
+  StructuredScanSummary,
+} from "../../analysis/search/pattern.ts";
 import type {
   HealthDiagnosticObservation,
   HealthRefreshState,
@@ -92,6 +100,10 @@ export interface SearchDetails {
   changedFiles?: readonly string[];
   /** Present for AST mode; declares the operation-specific source-file universe and completeness. */
   scan?: StructuredScanSummary;
+  /** Source-mapped structural matches returned by AST mode. */
+  astMatches?: readonly StructuredMatch[];
+  /** Per-file structural failures, including available syntax recovery ranges. */
+  structuralFailures?: readonly StructuredFailure[];
   /** Structured disclosure for semantic results removed by the automatic path policy. */
   automaticPathExclusion?: CodeQueryPartialMetadata["automaticPathExclusion"];
 }
@@ -114,6 +126,9 @@ export interface ResolveDetails {
   groupDiscoveryProvenance?: readonly TargetProviderProvenance[];
   /** Complete-group declarations whose providers could not establish nesting. */
   groupUnknownNestingCount?: number;
+  /** Provider recovery that makes this target group incomplete. */
+  groupPartialReason?: string | null;
+  groupErrorRanges?: readonly SourceRange[];
   /** Strict provider kind that produced a near-match result. */
   requestedKind?: TargetSymbolKind;
   confidence: ConfidenceMode;
@@ -132,6 +147,7 @@ export interface ResolveDetails {
     displayCharacter: number;
     name: string | null;
     kind: string | null;
+    nativeKind?: string;
     container: string | null;
     anchorKind: AnchorKind;
     confidence: ConfidenceMode;
@@ -163,6 +179,7 @@ export interface OrientationSectionDetails {
   confidence: ConfidenceMode;
   provenance: ResultProvenance[];
   evidenceLists: EvidenceListMetadata[];
+  errorRanges?: readonly SourceRange[];
 }
 
 /** Structured details metadata for code_orientation results. */
@@ -213,6 +230,7 @@ export interface InspectSectionDetails {
   itemCount: number;
   confidence: ConfidenceMode;
   provenance: ResultProvenance[];
+  recovery?: { file: string; errorRanges: readonly SourceRange[] };
 }
 
 /** Structured details metadata for code_inspect results. */

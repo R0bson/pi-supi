@@ -37,10 +37,21 @@ describe("runGraphWorkflow", () => {
     });
     const structural = {
       calleesAt: async () => ({
-        kind: "success" as const,
+        kind: "partial" as const,
+        file: "src/index.ts",
+        reason: "Tree-sitter recovered syntax.",
+        errorRanges: [{ start: { line: 0, character: 20 }, end: { line: 0, character: 20 } }],
         data: {
           enclosingScope: { name: "oldName", startLine: 1, endLine: 1 },
-          callees: [],
+          callees: [
+            {
+              name: "helper",
+              startLine: 1,
+              startCharacter: 25,
+              endLine: 1,
+              endCharacter: 31,
+            },
+          ],
           depth: "direct" as const,
         },
       }),
@@ -72,7 +83,18 @@ describe("runGraphWorkflow", () => {
           rel: "references",
           message: "Semantic readiness timed out. Retry shortly or inspect code_health.",
         },
-        expect.objectContaining({ kind: "ok", rel: "callees" }),
+        expect.objectContaining({
+          kind: "ok",
+          rel: "callees",
+          data: expect.objectContaining({
+            calls: [expect.objectContaining({ name: "helper" })],
+            recovery: {
+              file: "src/index.ts",
+              reason: "Tree-sitter recovered syntax.",
+              errorRanges: [{ start: { line: 0, character: 20 }, end: { line: 0, character: 20 } }],
+            },
+          }),
+        }),
       ]),
     );
   });

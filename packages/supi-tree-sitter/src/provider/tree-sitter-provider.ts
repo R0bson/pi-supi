@@ -70,6 +70,17 @@ function mapTreeSitterResult<T, U>(
   switch (result.kind) {
     case "success":
       return { kind: "success", data: mapData(result.data) };
+    case "partial":
+      return {
+        kind: "partial",
+        data: mapData(result.data),
+        file: result.file,
+        reason: result.reason,
+        errorRanges: result.errorRanges.map((range) => ({
+          start: { line: range.startLine - 1, character: range.startCharacter - 1 },
+          end: { line: range.endLine - 1, character: range.endCharacter - 1 },
+        })),
+      };
     case "unsupported-language":
       return { kind: "unsupported-language", file: result.file, message: result.message };
     case "file-access-error":
@@ -103,6 +114,7 @@ function mapOutlineItems(items: OutlineItem[]): OutlineData[] {
   return items.map((item) => ({
     name: item.name,
     kind: item.kind,
+    ...(item.nativeKind === undefined ? {} : { nativeKind: item.nativeKind }),
     ...(item.nameAnchor ? { nameAnchor: { ...item.nameAnchor } } : {}),
     ...(item.nameEndAnchor ? { nameEndAnchor: { ...item.nameEndAnchor } } : {}),
     ...takeRange(item.range),
@@ -156,5 +168,11 @@ function mapCalleesAtResult(result: CalleesAtResult): CalleesData {
 }
 
 function mapCallSites(matches: CallSiteMatch[]): CallSite[] {
-  return matches.map((m) => ({ name: m.name, startLine: m.startLine }));
+  return matches.map((match) => ({
+    name: match.name,
+    startLine: match.startLine,
+    startCharacter: match.startCharacter,
+    endLine: match.endLine,
+    endCharacter: match.endCharacter,
+  }));
 }

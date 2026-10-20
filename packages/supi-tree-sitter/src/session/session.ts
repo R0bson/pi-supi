@@ -1,6 +1,9 @@
 // Session factory — creates asynchronous Structural Worker proxies and owned sessions.
 
-import type { CodeRequestControl } from "@mrclrchtr/supi-code-runtime/api";
+import type {
+  CFamilyFileAssociationRule,
+  CodeRequestControl,
+} from "@mrclrchtr/supi-code-runtime/api";
 import type {
   CalleesAtResult,
   CallSiteMatch,
@@ -62,13 +65,17 @@ export function createTreeSitterService(client: StructuralWorkerClient): TreeSit
 
 /**
  * Create one Tree-sitter session bound to a working directory.
+ * Pass trusted workspace associations when the caller owns config loading.
  * Await disposal to prove that its Structural Worker has terminated.
  */
 export function createTreeSitterSession(
   cwd: string,
-  options: { readonly workerFactory?: StructuralWorkerFactory } = {},
+  options: {
+    readonly workerFactory?: StructuralWorkerFactory;
+    readonly fileAssociations?: readonly CFamilyFileAssociationRule[];
+  } = {},
 ): TreeSitterSession {
-  const client = new StructuralWorkerClient(cwd, options.workerFactory);
+  const client = new StructuralWorkerClient(cwd, options.workerFactory, options.fileAssociations);
   const service = createTreeSitterService(client);
   return {
     ...service,

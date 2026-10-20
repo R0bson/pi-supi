@@ -1,4 +1,6 @@
 // biome-ignore-all lint/style/noExcessiveLinesPerFile: one private protocol module defines and validates the full closed contract
+
+import type { CFamilyFileAssociationRule } from "@mrclrchtr/supi-code-runtime/api";
 import { isDebugOperationId } from "@mrclrchtr/supi-core/debug";
 import type { TreeSitterResult } from "../types.ts";
 import type { StructuralTimingEvent } from "./structural-timing.ts";
@@ -36,6 +38,14 @@ export type StructuralWorkerOperation =
       readonly character: number;
       readonly depth?: "direct" | "deep";
     };
+
+export interface StructuralWorkerInitializationMessage {
+  readonly kind: "initialize";
+  readonly version: typeof STRUCTURAL_WORKER_PROTOCOL_VERSION;
+  readonly generation: number;
+  readonly cwd: string;
+  readonly fileAssociations: readonly CFamilyFileAssociationRule[];
+}
 
 export interface StructuralWorkerRequestMessage {
   readonly kind: "request";
@@ -427,7 +437,18 @@ function isStructuralTimingEvent(value: unknown): value is StructuralTimingEvent
 function assertTreeSitterResult(value: unknown): asserts value is TreeSitterResult<unknown> {
   if (!isRecord(value) || typeof value.kind !== "string")
     throw new Error("Invalid structural result");
-  if (value.kind === "success" && "data" in value) return;
+  if (value.kind === "success" && hasExactKeys(value, ["kind", "data"])) return;
+  if (
+    value.kind === "partial" &&
+    hasExactKeys(value, ["kind", "data", "file", "reason", "errorRanges"]) &&
+    isFileValue(value.file) &&
+    isBoundedString(value.reason, 2_048) &&
+    Array.isArray(value.errorRanges) &&
+    value.errorRanges.length <= 10_000 &&
+    value.errorRanges.every(isTreeSitterSourceRange)
+  ) {
+    return;
+  }
   if (
     value.kind === "unsupported-language" ||
     value.kind === "file-access-error" ||
@@ -525,6 +546,20 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
 
 function estimateChunkMessageBytes(payloadBytes: number): number {
   return payloadBytes + 1024;
+}
+
+function isTreeSitterSourceRange(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["startLine", "startCharacter", "endLine", "endCharacter"]) &&
+    isPositiveInteger(value.startLine) &&
+    isPositiveInteger(value.startCharacter) &&
+    isPositiveInteger(value.endLine) &&
+    isPositiveInteger(value.endCharacter) &&
+    (Number(value.startLine) < Number(value.endLine) ||
+      (value.startLine === value.endLine &&
+        Number(value.startCharacter) <= Number(value.endCharacter)))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

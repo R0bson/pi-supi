@@ -256,8 +256,24 @@ describe("runFindWorkflow", () => {
         astKind: "definition",
         result: {
           matches: [
-            { file: "src/a.ts", line: 1, name: "targetA", kind: "variable" },
-            { file: "src/b.ts", line: 1, name: "targetB", kind: "variable" },
+            {
+              file: "src/a.ts",
+              line: 1,
+              startCharacter: 1,
+              endLine: 1,
+              endCharacter: 7,
+              name: "targetA",
+              kind: "variable",
+            },
+            {
+              file: "src/b.ts",
+              line: 1,
+              startCharacter: 1,
+              endLine: 1,
+              endCharacter: 7,
+              name: "targetB",
+              kind: "variable",
+            },
           ],
           failures: [],
           partialReason: "safety-limit",

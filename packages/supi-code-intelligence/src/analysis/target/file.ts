@@ -20,6 +20,7 @@ import {
 } from "@mrclrchtr/supi-code-runtime/api";
 import type { AnchorKind } from "../../session/target-store.ts";
 import { normalizePath } from "../search/paths.ts";
+import { mergeDiscoveryPartial, type TargetDiscoveryResult } from "./discovery.ts";
 import {
   reconcileContainer,
   reconcileNesting,
@@ -61,14 +62,11 @@ const BINARY_EXTENSIONS = new Set([
   ".node",
 ]);
 
+type DiscoveryResult = TargetDiscoveryResult<DiscoveredTargetData>;
+
 export interface DiscoveredTargetData extends ResolvedTargetData {
   /** Provider-backed hierarchy used only for file-result presentation ranking. */
   readonly nesting: DeclarationNesting;
-}
-
-interface DiscoveryResult {
-  readonly available: boolean;
-  readonly targets: DiscoveredTargetData[];
 }
 
 /** Validated file-discovery input with its normalized absolute path. */
@@ -130,6 +128,7 @@ export async function resolveFileTargetGroup(
       discoveryProvenance,
       confidence: targetGroupConfidence(targets, discoveryProvenance),
       unknownNestingCount,
+      ...mergeDiscoveryPartial(semantic, structural),
     },
   };
 }
@@ -166,7 +165,7 @@ async function discoverSemantic(
 ): Promise<DiscoveryResult> {
   if (!semantic) return { available: false, targets: [] };
   try {
-    const result = await semantic.documentSymbols(file);
+    const result = await semantic.documentSymbols(file, control);
     if (result.kind === "unavailable") return { available: false, targets: [] };
     return {
       available: true,
@@ -177,6 +176,7 @@ async function discoverSemantic(
           return { ...refined, nesting: target.nesting };
         }),
       ),
+      ...(result.kind === "partial" ? { partial: { reason: result.reason, errorRanges: [] } } : {}),
     };
   } catch (error) {
     if (isCodeRequestInterruption(error, control)) throw error;
@@ -218,9 +218,17 @@ async function discoverStructural(
 ): Promise<DiscoveryResult> {
   if (!structural) return { available: false, targets: [] };
   try {
-    const result = await structural.outline(file);
-    if (result.kind !== "success") return { available: false, targets: [] };
-    return { available: true, targets: flattenOutline(file, result.data) };
+    const result = await structural.outline(file, control);
+    if (result.kind !== "success" && result.kind !== "partial") {
+      return { available: false, targets: [] };
+    }
+    return {
+      available: true,
+      targets: flattenOutline(file, result.data),
+      ...(result.kind === "partial"
+        ? { partial: { reason: result.reason, errorRanges: result.errorRanges } }
+        : {}),
+    };
   } catch (error) {
     if (isCodeRequestInterruption(error, control)) throw error;
     return { available: false, targets: [] };
@@ -247,6 +255,7 @@ function flattenOutline(
       declarationOccurrence: 0,
       name: item.name,
       kind: item.kind,
+      ...(item.nativeKind ? { nativeKind: item.nativeKind } : {}),
       identityKind:
         canonicalFileDeclarationKind(file, item.kind, item.name) ??
         canonicalDeclarationKind(item.kind),
@@ -279,6 +288,7 @@ function mergeDiscoveries(
       {
         ...refinedSemantic,
         provenance: ["semantic", "structural"] as const,
+        nativeKind: structuralTarget.nativeKind ?? semanticTarget.nativeKind,
         container: reconcileContainer(semanticTarget, structuralTarget),
         nesting: reconcileNesting(semanticTarget.nesting, structuralTarget.nesting),
       },

@@ -5,8 +5,22 @@ import { createDefaultAutomaticLspPathPolicy } from "@mrclrchtr/supi-lsp/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  lsp: [] as Array<{ start: ReturnType<typeof vi.fn>; shutdown: ReturnType<typeof vi.fn> }>,
-  tree: [] as Array<{ start: ReturnType<typeof vi.fn>; shutdown: ReturnType<typeof vi.fn> }>,
+  lsp: [] as Array<{
+    start: ReturnType<typeof vi.fn>;
+    shutdown: ReturnType<typeof vi.fn>;
+    options: { fileAssociations?: unknown };
+  }>,
+  tree: [] as Array<{
+    start: ReturnType<typeof vi.fn>;
+    shutdown: ReturnType<typeof vi.fn>;
+    fileAssociations: unknown;
+  }>,
+  associations: {
+    workspaceRoot: "/workspace",
+    rules: [],
+    languageForFile: vi.fn(() => "c"),
+  },
+  loadAssociations: vi.fn(() => mocks.associations),
 }));
 vi.mock("@mrclrchtr/supi-lsp/api", () => ({
   createDefaultAutomaticLspPathPolicy: vi.fn(() => ({
@@ -16,8 +30,8 @@ vi.mock("@mrclrchtr/supi-lsp/api", () => ({
   LspRuntimeController: class {
     start = vi.fn(async () => ({ kind: "ready" as const }));
     shutdown = vi.fn(async () => {});
-    constructor() {
-      mocks.lsp.push(this);
+    constructor(_cwd: string, _runtime: unknown, options: { fileAssociations?: unknown }) {
+      mocks.lsp.push({ start: this.start, shutdown: this.shutdown, options });
     }
   },
   scanWorkspaceSentinels: vi.fn(() => new Map()),
@@ -26,10 +40,13 @@ vi.mock("@mrclrchtr/supi-tree-sitter/api", () => ({
   TreeSitterRuntimeController: class {
     start = vi.fn(async () => ({ kind: "ready" as const }));
     shutdown = vi.fn(async () => {});
-    constructor() {
-      mocks.tree.push(this);
+    constructor(_cwd: string, _runtime: unknown, fileAssociations: unknown) {
+      mocks.tree.push({ start: this.start, shutdown: this.shutdown, fileAssociations });
     }
   },
+}));
+vi.mock("../../../src/config.ts", () => ({
+  loadProjectFileAssociations: mocks.loadAssociations,
 }));
 
 import {
@@ -53,17 +70,23 @@ describe("Workspace provider host", () => {
     vi.clearAllMocks();
     mocks.lsp.length = 0;
     mocks.tree.length = 0;
+    mocks.loadAssociations.mockClear();
     resetWorkspaceProviderHostsForTests();
   });
 
-  it("does not expose a trusted LSP controller to an untrusted lease", async () => {
+  it("rejects a trust change while a workspace host is active", async () => {
     const trusted = await acquireWorkspaceProviderHost("/workspace", { projectTrusted: true });
-    const untrusted = await acquireWorkspaceProviderHost("/workspace", { projectTrusted: false });
 
     expect(trusted.lspController).not.toBeNull();
-    expect(untrusted.lspController).toBeNull();
+    await expect(
+      acquireWorkspaceProviderHost("/workspace", { projectTrusted: false }),
+    ).rejects.toThrow("already uses projectTrusted=true");
+    expect(mocks.loadAssociations).toHaveBeenCalledOnce();
 
     await trusted.release();
+    const untrusted = await acquireWorkspaceProviderHost("/workspace", { projectTrusted: false });
+    expect(untrusted.lspController).toBeNull();
+    expect(mocks.loadAssociations).toHaveBeenCalledTimes(2);
     await untrusted.release();
   });
 
@@ -73,6 +96,10 @@ describe("Workspace provider host", () => {
 
     expect(mocks.lsp).toHaveLength(1);
     expect(mocks.tree).toHaveLength(1);
+    expect(first.fileAssociations).toBe(mocks.associations);
+    expect(second.fileAssociations).toBe(first.fileAssociations);
+    expect(mocks.lsp[0]?.options.fileAssociations).toBe(first.fileAssociations);
+    expect(mocks.tree[0]?.fileAssociations).toBe(first.fileAssociations);
     expect(mocks.lsp[0]?.start).toHaveBeenCalledOnce();
     expect(mocks.tree[0]?.start).toHaveBeenCalledOnce();
 

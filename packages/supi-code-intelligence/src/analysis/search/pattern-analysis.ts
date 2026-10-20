@@ -4,6 +4,7 @@ import {
   isCodeRequestDeadlineError,
   isCodeRequestInterruption,
   type OutlineData,
+  type SourceRange,
   type StructuralProvider as StructuralSubstrate,
 } from "@mrclrchtr/supi-code-runtime/api";
 import type { CodeFindAstKind } from "../../tool/code_find/ast-kinds.ts";
@@ -20,8 +21,14 @@ export interface StructuredPatternParams {
 export interface StructuredMatch {
   readonly file: string;
   readonly name: string;
+  /** Display kind: native kind when available, otherwise common structural kind. */
   readonly kind: string;
   readonly line: number;
+  readonly startCharacter: number;
+  readonly endLine: number;
+  readonly endCharacter: number;
+  readonly commonKind?: string;
+  readonly nativeKind?: string;
 }
 
 export type StructuredFailureKind = Exclude<CodeResult<never>, { kind: "success" }>["kind"];
@@ -30,6 +37,7 @@ export interface StructuredFailure {
   readonly file: string;
   readonly kind: StructuredFailureKind;
   readonly reason: string;
+  readonly errorRanges?: readonly SourceRange[];
 }
 
 export type StructuredScanLimitation = AstScanLimitation | ProviderScanLimitation;
@@ -159,8 +167,17 @@ async function collectMatchesForFile(
   matcher: (value: string) => boolean,
   requestControl: CodeRequestControl,
 ): Promise<void> {
-  const recordFailure = (kind: StructuredFailureKind, reason: string) => {
-    failures.push({ file: relFile, kind, reason });
+  const recordFailure = (
+    failureKind: StructuredFailureKind,
+    reason: string,
+    errorRanges?: readonly SourceRange[],
+  ) => {
+    failures.push({
+      file: relFile,
+      kind: failureKind,
+      reason,
+      ...(errorRanges ? { errorRanges } : {}),
+    });
   };
 
   if (kind === "definition") {
@@ -168,7 +185,7 @@ async function collectMatchesForFile(
     if (!handleStructuralResult(outline, recordFailure)) return;
     for (const item of flattenOutlineItems(outline.data)) {
       if (!matcher(item.name)) continue;
-      matches.push({ file: relFile, name: item.name, kind: item.kind, line: item.startLine });
+      matches.push(outlineMatch(relFile, item));
     }
     return;
   }
@@ -178,7 +195,15 @@ async function collectMatchesForFile(
     if (!handleStructuralResult(exportsResult, recordFailure)) return;
     for (const item of exportsResult.data) {
       if (!matcher(item.name)) continue;
-      matches.push({ file: relFile, name: item.name, kind: item.kind, line: item.startLine });
+      matches.push({
+        file: relFile,
+        name: item.name,
+        kind: item.kind,
+        line: item.startLine,
+        startCharacter: item.startCharacter,
+        endLine: item.endLine,
+        endCharacter: item.endCharacter,
+      });
     }
     return;
   }
@@ -193,6 +218,9 @@ async function collectMatchesForFile(
         name: item.moduleSpecifier,
         kind: "import",
         line: item.startLine,
+        startCharacter: item.startCharacter,
+        endLine: item.endLine,
+        endCharacter: item.endCharacter,
       });
     }
     return;
@@ -203,7 +231,15 @@ async function collectMatchesForFile(
     if (!handleStructuralResult(callResult, recordFailure)) return;
     for (const call of callResult.data) {
       if (!matcher(callableExpressionForMatching(call.name))) continue;
-      matches.push({ file: relFile, name: call.name, kind: "call", line: call.startLine });
+      matches.push({
+        file: relFile,
+        name: call.name,
+        kind: "call",
+        line: call.startLine,
+        startCharacter: call.startCharacter,
+        endLine: call.endLine,
+        endCharacter: call.endCharacter,
+      });
     }
     return;
   }
@@ -217,20 +253,43 @@ async function collectMatchesForFile(
     if (kind === "method" && item.kind.toLowerCase() !== "method") continue;
     if (kind === "enum" && item.kind.toLowerCase() !== "enum") continue;
     if (!matcher(item.name)) continue;
-    matches.push({ file: relFile, name: item.name, kind: item.kind, line: item.startLine });
+    matches.push(outlineMatch(relFile, item));
   }
 }
 
 /** Flatten provider outlines so nested class/interface/enum declarations remain searchable. */
+function outlineMatch(file: string, item: OutlineData): StructuredMatch {
+  return {
+    file,
+    name: item.name,
+    kind: item.nativeKind ?? item.kind,
+    ...(item.nativeKind ? { commonKind: item.kind, nativeKind: item.nativeKind } : {}),
+    line: item.startLine,
+    startCharacter: item.startCharacter,
+    endLine: item.endLine,
+    endCharacter: item.endCharacter,
+  };
+}
+
 function flattenOutlineItems(items: readonly OutlineData[]): OutlineData[] {
   return items.flatMap((item) => [item, ...flattenOutlineItems(item.children ?? [])]);
 }
 
+type StructuralDataResult<T> = Extract<CodeResult<T>, { kind: "success" | "partial" }>;
+
 function handleStructuralResult<T>(
   result: CodeResult<T>,
-  recordFailure: (kind: StructuredFailureKind, reason: string) => void,
-): result is { kind: "success"; data: T } {
+  recordFailure: (
+    kind: StructuredFailureKind,
+    reason: string,
+    errorRanges?: readonly SourceRange[],
+  ) => void,
+): result is StructuralDataResult<T> {
   if (result.kind === "success") return true;
+  if (result.kind === "partial") {
+    recordFailure("partial", result.reason, result.errorRanges);
+    return true;
+  }
   recordFailure(result.kind, result.message);
   return false;
 }

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CODE_INTELLIGENCE_DEFAULTS,
   loadCodeIntelligenceConfig,
+  loadProjectFileAssociations,
   registerCodeIntelligenceSettings,
   resolveOverviewEnabled,
 } from "../../src/config.ts";
@@ -71,6 +72,85 @@ describe("CodeIntelligenceConfig", () => {
 
     expect(loadCodeIntelligenceConfig(tmpDir, tmpDir).overviewEnabled).toBe(true);
     expect(resolveOverviewEnabled(tmpDir, true, tmpDir)).toBe(true);
+  });
+
+  it("loads trusted project-only file associations", () => {
+    const tmpDir = makeTempDir();
+    tempDirs.push(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".pi/supi"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".pi/supi/config.json"),
+      JSON.stringify({
+        "code-intelligence": {
+          fileAssociations: [{ pattern: "vendor/**/*.h", language: "cpp" }],
+        },
+      }),
+    );
+
+    const resolver = loadProjectFileAssociations(tmpDir, true);
+
+    expect(resolver.languageForFile(path.join(tmpDir, "vendor/sdk/api.h"))).toBe("cpp");
+    expect(resolver.languageForFile(path.join(tmpDir, "api.h"))).toBe("c");
+  });
+
+  it.each([null, "**/*.h", [{ pattern: "**/*.h", language: "rust" }]])(
+    "reports invalid trusted association configuration: %j",
+    (fileAssociations) => {
+      const tmpDir = makeTempDir();
+      tempDirs.push(tmpDir);
+      fs.mkdirSync(path.join(tmpDir, ".pi/supi"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".pi/supi/config.json"),
+        JSON.stringify({ "code-intelligence": { fileAssociations } }),
+      );
+
+      expect(() => loadProjectFileAssociations(tmpDir, true)).toThrow(
+        `Invalid trusted project configuration in ${path.join(tmpDir, ".pi/supi/config.json")}`,
+      );
+    },
+  );
+
+  it("keeps a resolver snapshot until the caller loads it again", () => {
+    const tmpDir = makeTempDir();
+    tempDirs.push(tmpDir);
+    const configPath = path.join(tmpDir, ".pi/supi/config.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        "code-intelligence": {
+          fileAssociations: [{ pattern: "**/*.h", language: "cpp" }],
+        },
+      }),
+    );
+    const snapshot = loadProjectFileAssociations(tmpDir, true);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        "code-intelligence": {
+          fileAssociations: [{ pattern: "**/*.h", language: "c" }],
+        },
+      }),
+    );
+
+    expect(snapshot.languageForFile(path.join(tmpDir, "api.h"))).toBe("cpp");
+    expect(
+      loadProjectFileAssociations(tmpDir, true).languageForFile(path.join(tmpDir, "api.h")),
+    ).toBe("c");
+  });
+
+  it("does not read invalid associations from an untrusted project", () => {
+    const tmpDir = makeTempDir();
+    tempDirs.push(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".pi/supi"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".pi/supi/config.json"),
+      JSON.stringify({ "code-intelligence": { fileAssociations: "not-an-array" } }),
+    );
+
+    const resolver = loadProjectFileAssociations(tmpDir, false);
+
+    expect(resolver.languageForFile(path.join(tmpDir, "api.h"))).toBe("c");
   });
 
   it("loads code-intelligence.instructionFileNames from project config", () => {

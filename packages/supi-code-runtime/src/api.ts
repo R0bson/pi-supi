@@ -14,6 +14,17 @@ export type {
   StructuralProvider,
   StructuralResult,
 } from "./capability/types.ts";
+export type {
+  CFamilyExtension,
+  CFamilyFileAssociationResolver,
+  CFamilyFileAssociationRule,
+  CFamilyLanguage,
+} from "./file-associations.ts";
+export {
+  C_FAMILY_EXTENSIONS,
+  createCFamilyFileAssociationResolver,
+  defaultCFamilyLanguage,
+} from "./file-associations.ts";
 export type { CodeQueryPartialMetadata, CodeQueryResult } from "./query-result.ts";
 // Shared query-result constructors and contract
 export {

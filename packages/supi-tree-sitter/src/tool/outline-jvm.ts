@@ -20,6 +20,15 @@ export function extractJvmOutlineItems(
       return one(javaContainerItem(node, "interface", source));
     case "module_declaration":
       return one(javaNamed(node, "module", source));
+    case "method_declaration":
+      return one(javaNamed(node, "method", source));
+    case "constructor_declaration":
+      return one(javaNamed(node, "method", source, "constructor"));
+    case "field_declaration":
+    case "constant_declaration":
+      return javaVariables(node, "field", source);
+    case "enum_constant":
+      return one(javaNamed(node, "enum-member", source));
     case "object_declaration":
       return one(kotlinObject(node, source));
     case "function_declaration":
@@ -113,9 +122,16 @@ function javaMemberItems(node: SyntaxNodeLike, ownerName: string, source: string
     case "constant_declaration":
       return javaVariables(node, "field", source);
     case "constructor_declaration":
-      return one(javaNamed(node, "method", source));
+      return one(javaNamed(node, "method", source, "constructor"));
     case "compact_constructor_declaration":
-      return [{ name: ownerName, kind: "method", range: nodeToRange(node, source) }];
+      return [
+        {
+          name: ownerName,
+          kind: "method",
+          nativeKind: "constructor",
+          range: nodeToRange(node, source),
+        },
+      ];
     case "method_declaration":
     case "annotation_type_element_declaration":
       return one(javaNamed(node, "method", source));
@@ -150,9 +166,14 @@ function javaVariables(node: SyntaxNodeLike, kind: string, source: string): Outl
   });
 }
 
-function javaNamed(node: SyntaxNodeLike, kind: string, source: string): OutlineItem | null {
+function javaNamed(
+  node: SyntaxNodeLike,
+  kind: string,
+  source: string,
+  nativeKind = kind,
+): OutlineItem | null {
   const name = node.childForFieldName("name");
-  return name ? { name: name.text, kind, range: nodeToRange(node, source) } : null;
+  return name ? { name: name.text, kind, nativeKind, range: nodeToRange(node, source) } : null;
 }
 
 function kotlinClass(node: SyntaxNodeLike, source: string): OutlineItem | null {

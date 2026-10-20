@@ -11,7 +11,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sanitizeNpmEnv } from "./npm-env.mjs";
@@ -276,42 +276,63 @@ function ensureBundledDep(localNm, depName, pjPath) {
   return localPath;
 }
 
+/** Find an installed dependency within the isolated stage, using ancestor lookup. */
+function findStagedDependency(currentDir, depName, stageDir) {
+  let directory = currentDir;
+  while (true) {
+    const candidate = join(directory, "node_modules", ...depName.split("/"));
+    if (existsSync(join(candidate, "package.json"))) return candidate;
+    if (directory === stageDir) return null;
+    directory = dirname(directory);
+  }
+}
+
+function readStagedManifest(directory) {
+  try {
+    return JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function bundledDependencyNames(manifest, includeRuntime) {
+  const bundled = manifest.bundledDependencies ?? manifest.bundleDependencies;
+  const names = new Set(Array.isArray(bundled) ? bundled : []);
+  if (includeRuntime || bundled === true) {
+    for (const name of Object.keys(manifest.dependencies ?? {})) names.add(name);
+  }
+  return names;
+}
+
 /**
- * Recursively ensure every bundledDependency declared in a
- * package.json inside the staging tree is physically present.
- *
- * pnpm may hoist a dependency to the workspace root without creating
- * a local node_modules symlink for it.  cp -RL only copies what is
- * inside the package directory, so those hoisted deps are missing
- * from the staged copy.  We resolve them from the root node_modules
- * and copy them into place so npm pack can include them.
+ * Materialize the runtime dependency closure of each bundled package.
+ * Hoisted dependencies can be absent from the copied package directory. npm pack
+ * includes their transitive runtime dependencies only when they are present.
+ * Do not bundle ordinary root dependencies or development/peer dependencies.
  */
 function copyMissingBundledDeps(stageDir) {
   const queue = [stageDir];
+  const visited = new Set();
 
   while (queue.length > 0) {
     const currentDir = queue.shift();
+    if (visited.has(currentDir)) continue;
+    visited.add(currentDir);
     const pjPath = join(currentDir, "package.json");
-    if (!existsSync(pjPath)) continue;
-
-    let pkgJson;
-    try {
-      pkgJson = JSON.parse(readFileSync(pjPath, "utf8"));
-    } catch {
-      continue;
-    }
-
-    const bundled = pkgJson.bundledDependencies;
-    if (!Array.isArray(bundled) || bundled.length === 0) continue;
+    const manifest = readStagedManifest(currentDir);
+    if (!manifest) continue;
+    const names = bundledDependencyNames(manifest, currentDir !== stageDir);
+    if (names.size === 0) continue;
 
     const localNm = join(currentDir, "node_modules");
     mkdirSync(localNm, { recursive: true });
 
-    for (const depName of bundled) {
-      const depPath = ensureBundledDep(localNm, depName, pjPath);
-      if (depPath) {
-        queue.push(depPath);
-      }
+    for (const depName of names) {
+      const depPath =
+        findStagedDependency(currentDir, depName, stageDir) ??
+        ensureBundledDep(localNm, depName, pjPath);
+      if (!depPath) throw new Error(`Missing runtime dependency "${depName}" in ${pjPath}`);
+      queue.push(depPath);
     }
   }
 }

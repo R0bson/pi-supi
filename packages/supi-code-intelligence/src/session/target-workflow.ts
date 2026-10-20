@@ -59,6 +59,7 @@ export type TargetWorkflowOutcome =
       totalCount: number;
       omittedCount: number;
       unknownNestingCount: number;
+      partial?: ResolvedTargetGroupData["partial"];
     }
   | ({
       kind: "disambiguation";
@@ -353,6 +354,7 @@ function registerTargetGroup(
     totalCount,
     omittedCount: totalCount - targets.length,
     unknownNestingCount: group.unknownNestingCount,
+    ...(group.partial ? { partial: group.partial } : {}),
   });
 }
 
@@ -386,6 +388,7 @@ function registerFromTargetData(
     displayCharacter: target.displayCharacter,
     name: target.name,
     kind: target.kind,
+    nativeKind: target.nativeKind,
     identityKind: target.identityKind ?? canonicalDeclarationKind(target.kind),
     confidence: target.confidence,
     provenance: target.provenance,

@@ -4,6 +4,18 @@ import type { GrammarId, SupportedExtension } from "./types.ts";
 
 /** Structural collection operations whose language support defines an AST Scan universe. */
 const STRUCTURAL_SEARCH_OPERATIONS = ["outline", "imports", "exports", "call-sites"] as const;
+const IMPORT_GRAMMARS: ReadonlySet<GrammarId> = new Set([
+  "javascript",
+  "typescript",
+  "tsx",
+  "python",
+  "java",
+  "go",
+  "rust",
+  "c",
+  "cpp",
+  "latex",
+]);
 
 /** One Tree-sitter structural collection operation used by code-aware search. */
 export type StructuralSearchOperation = (typeof STRUCTURAL_SEARCH_OPERATIONS)[number];
@@ -33,12 +45,7 @@ export function supportsGrammarOperation(
     case "outline":
       return true;
     case "imports":
-      return (
-        grammar === "javascript" ||
-        grammar === "typescript" ||
-        grammar === "tsx" ||
-        grammar === "latex"
-      );
+      return IMPORT_GRAMMARS.has(grammar);
     case "exports":
       return grammar === "javascript" || grammar === "typescript" || grammar === "tsx";
     default:

@@ -1,8 +1,21 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { getDefaultWorkspaceRuntime } from "@mrclrchtr/supi-code-runtime/api";
-import { LspRuntimeController } from "@mrclrchtr/supi-lsp/api";
+import {
+  LspRuntimeController,
+  loadConfig,
+  type WorkspaceLspRuntime,
+} from "@mrclrchtr/supi-lsp/api";
 import { createTreeSitterSession, type TreeSitterSession } from "@mrclrchtr/supi-tree-sitter/api";
 import { createTreeSitterProvider } from "@mrclrchtr/supi-tree-sitter/provider/tree-sitter-provider";
 import { WorkspaceCodeIntelligenceSession } from "../../src/session/session.ts";
@@ -49,6 +62,21 @@ export interface RealSubstrateWorkspace {
   dispose(): Promise<void>;
 }
 
+export interface RealLanguageWorkspaceOptions {
+  readonly fixturePath: string;
+  readonly sourceFile: string;
+  readonly language: "typescript" | "javascript" | "python" | "java" | "go" | "rust" | "c" | "cpp";
+  readonly command?: string;
+  readonly args?: readonly string[];
+}
+
+export interface RealLanguageWorkspace extends RealSubstrateWorkspace {
+  readonly homeDir: string;
+  readonly sourcePath: string;
+  readonly runtime: ReturnType<typeof getDefaultWorkspaceRuntime>;
+  readonly lspRuntime: WorkspaceLspRuntime;
+}
+
 /** Create one temporary workspace backed by real TypeScript LSP and Tree-sitter services. */
 export async function createRealSubstrateWorkspace(): Promise<RealSubstrateWorkspace> {
   const cwd = mkdtempSync(join(tmpdir(), "code-intelligence-contract-"));
@@ -69,6 +97,161 @@ export async function createRealSubstrateWorkspace(): Promise<RealSubstrateWorks
     await cleanupWorkspace({ cwd, runtime, treeSitter, controller });
     throw error;
   }
+}
+
+export async function createRealLanguageWorkspace(
+  options: RealLanguageWorkspaceOptions,
+): Promise<RealLanguageWorkspace> {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), `code-baseline-${options.language}-`)));
+  const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "code-baseline-home-")));
+  const sourcePath = join(cwd, options.sourceFile);
+  let controller: LspRuntimeController | undefined;
+  let treeSitter: TreeSitterSession | undefined;
+  const runtime = getDefaultWorkspaceRuntime();
+
+  try {
+    cpSync(options.fixturePath, cwd, { recursive: true });
+    normalizeCompilationDatabase(cwd);
+    const routeName = routeNameFor(options.language);
+    const serverConfig = loadConfig(cwd, { homeDir }).servers;
+    const selected = serverConfig[routeName];
+    if (!selected) throw new Error(`No default LSP route exists for ${routeName}.`);
+    const command = options.command ?? commandOverride(options.language) ?? selected.command;
+    const args = options.args
+      ? [...options.args]
+      : defaultArgs(homeDir, options, selected.args ?? []);
+    const servers = Object.fromEntries(
+      Object.entries(serverConfig).map(([name, config]) => [
+        name,
+        name === routeName
+          ? {
+              ...config,
+              enabled: true,
+              command,
+              args,
+              ...(options.language === "python"
+                ? { settings: { basedpyright: { analysis: { typeCheckingMode: "strict" } } } }
+                : {}),
+            }
+          : { ...config, enabled: false },
+      ]),
+    );
+    mkdirSync(join(cwd, ".pi", "supi"), { recursive: true });
+    writeFileSync(join(cwd, ".pi", "supi", "config.json"), JSON.stringify({ lsp: { servers } }));
+
+    treeSitter = createTreeSitterSession(cwd);
+    const structural = createTreeSitterProvider(treeSitter);
+    runtime.registerStructural(cwd, structural);
+    controller = new LspRuntimeController(cwd, runtime, { homeDir, projectTrusted: true });
+    const started = await controller.start();
+    if (started.kind !== "ready") {
+      throw new Error(`Real ${options.language} LSP did not start: ${startFailureReason(started)}`);
+    }
+    if (!(await started.runtime.trackFile(sourcePath))) {
+      throw new Error(`The ${options.language} LSP did not track ${sourcePath}.`);
+    }
+    const readiness = await started.runtime.waitUntilReadyForFile(sourcePath, {
+      timeoutMs: 60_000,
+    });
+    if (readiness.kind !== "ready") {
+      throw new Error(
+        `The ${options.language} LSP is not ready for ${sourcePath}: ${readiness.kind}.`,
+      );
+    }
+    const activeServer = started.runtime
+      .getProjectServers()
+      .find((server) => server.name === routeName && server.status === "running");
+    if (!activeServer) {
+      throw new Error(`No concrete ready ${routeName} server serves ${sourcePath}.`);
+    }
+
+    const session = new WorkspaceCodeIntelligenceSession(cwd);
+    session.setHomeDir(homeDir);
+    return {
+      cwd,
+      homeDir,
+      sourcePath,
+      runtime,
+      lspRuntime: started.runtime,
+      session,
+      disableStructural: () => runtime.clearStructural(cwd),
+      enableStructural: () => runtime.registerStructural(cwd, structural),
+      dispose: async () => {
+        try {
+          await controller?.shutdown();
+        } finally {
+          runtime.clearWorkspace(cwd);
+          await treeSitter?.dispose();
+          rmSync(cwd, { recursive: true, force: true });
+          rmSync(homeDir, { recursive: true, force: true });
+        }
+      },
+    };
+  } catch (error) {
+    await controller?.shutdown();
+    runtime.clearWorkspace(cwd);
+    await treeSitter?.dispose();
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function routeNameFor(language: RealLanguageWorkspaceOptions["language"]): string {
+  if (language === "javascript" || language === "typescript") return "typescript";
+  if (language === "c" || language === "cpp") return "c";
+  return language;
+}
+
+function commandOverride(language: RealLanguageWorkspaceOptions["language"]): string | undefined {
+  const key = serverCommandEnvironment(language);
+  const command = process.env[key];
+  if (language === "python" && !command) {
+    throw new Error("Set CODE_BASELINE_PYTHON_SERVER to the pinned basedpyright-langserver path.");
+  }
+  return command;
+}
+
+function serverCommandEnvironment(language: RealLanguageWorkspaceOptions["language"]): string {
+  if (language === "typescript" || language === "javascript")
+    return "CODE_BASELINE_TYPESCRIPT_SERVER";
+  if (language === "python") return "CODE_BASELINE_PYTHON_SERVER";
+  if (language === "java") return "CODE_BASELINE_JDTLS_SERVER";
+  if (language === "go") return "CODE_BASELINE_GOPLS_SERVER";
+  if (language === "rust") return "CODE_BASELINE_RUST_ANALYZER_SERVER";
+  return "CODE_BASELINE_CLANGD_SERVER";
+}
+
+function defaultArgs(
+  homeDir: string,
+  options: RealLanguageWorkspaceOptions,
+  selected: readonly string[],
+): string[] {
+  if (options.language !== "java") return [...selected];
+  const data = join(homeDir, "jdtls-data");
+  const configuration = join(homeDir, "jdtls-configuration");
+  mkdirSync(data, { recursive: true });
+  mkdirSync(configuration, { recursive: true });
+  return ["-data", data, "-configuration", configuration];
+}
+
+function normalizeCompilationDatabase(cwd: string): void {
+  const file = join(cwd, "compile_commands.json");
+  if (!existsSync(file)) return;
+  const entries = JSON.parse(readFileSync(file, "utf8")) as Array<{
+    directory: string;
+    file: string;
+  }>;
+  writeFileSync(
+    file,
+    JSON.stringify(
+      entries.map((entry) => ({
+        ...entry,
+        directory: cwd,
+        file: resolve(cwd, entry.file),
+      })),
+    ),
+  );
 }
 
 function createWorkspaceHandle(options: {

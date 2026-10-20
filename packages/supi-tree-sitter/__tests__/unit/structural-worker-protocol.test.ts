@@ -130,6 +130,28 @@ describe("Structural Worker protocol", () => {
     expect(decodeStructuralResult(encoded)).toEqual(result);
   });
 
+  it("validates partial result metadata and preserves it through chunk transport", () => {
+    const result = {
+      kind: "partial" as const,
+      file: "src/recovered.ts",
+      reason: "Tree-sitter recovered syntax.",
+      errorRanges: [{ startLine: 4, startCharacter: 2, endLine: 4, endCharacter: 2 }],
+      data: [{ name: "kept" }],
+    };
+    const chunks = encodeStructuralResult(result);
+    expect(decodeStructuralResult(chunks)).toEqual(result);
+    expect(() =>
+      decodeStructuralResult([
+        Buffer.from(
+          JSON.stringify({
+            ...result,
+            errorRanges: [{ startLine: 0, startCharacter: 1, endLine: 0, endCharacter: 1 }],
+          }),
+        ),
+      ]),
+    ).toThrow("Invalid structural result");
+  });
+
   it("rejects a malformed message instead of widening the protocol", () => {
     expect(
       validateWorkerToParentMessage({

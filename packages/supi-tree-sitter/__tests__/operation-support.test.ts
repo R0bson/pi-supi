@@ -3,7 +3,16 @@ import { getStructuralSearchSupportedExtensions, getSupportedExtensions } from "
 import { detectGrammar } from "../src/language.ts";
 
 const JS_TS_GRAMMARS = new Set(["javascript", "typescript", "tsx"]);
-const JS_TS_LATEX_GRAMMARS = new Set([...JS_TS_GRAMMARS, "latex"]);
+const IMPORT_GRAMMARS = new Set([
+  ...JS_TS_GRAMMARS,
+  "python",
+  "java",
+  "go",
+  "rust",
+  "c",
+  "cpp",
+  "latex",
+]);
 const CALL_UNSUPPORTED_EXTENSIONS = new Set([
   ".html",
   ".htm",
@@ -28,7 +37,7 @@ describe("structural search operation support", () => {
   it.each(["imports", "exports"] as const)(
     "declares grammar-backed extensions for %s",
     (operation) => {
-      const grammars = operation === "imports" ? JS_TS_LATEX_GRAMMARS : JS_TS_GRAMMARS;
+      const grammars = operation === "imports" ? IMPORT_GRAMMARS : JS_TS_GRAMMARS;
       expect(getStructuralSearchSupportedExtensions(operation)).toEqual(
         extensionsForGrammars(grammars),
       );

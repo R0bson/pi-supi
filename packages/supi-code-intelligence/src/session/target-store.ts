@@ -50,6 +50,8 @@ export interface TargetStoreEntry {
   displayCharacter: number;
   name: string | null;
   kind: string | null;
+  /** Structural source-language declaration kind; it does not change identity. */
+  nativeKind?: string;
   confidence: ConfidenceMode;
   /** Monotonic provider families that established this target. */
   provenance: readonly TargetProviderProvenance[];
@@ -82,6 +84,8 @@ export interface TargetRegistrationInput {
   displayCharacter: number;
   name: string | null;
   kind: string | null;
+  /** Structural source-language declaration kind; it does not change identity. */
+  nativeKind?: string;
   /** Provider-independent declaration kind used only for stable identity. */
   identityKind?: string;
   confidence: ConfidenceMode;
@@ -251,6 +255,7 @@ export function registerWorkflowTarget(
     displayCharacter: input.displayCharacter,
     name: input.name,
     kind: input.kind,
+    ...(input.nativeKind ? { nativeKind: input.nativeKind } : {}),
     confidence: input.confidence,
     provenance: normalizeProvenance(input.provenance),
     anchorKind: input.anchorKind,

@@ -90,7 +90,7 @@ Always-on policy:
 
 `code-intelligence.exclude` contains gitignore-style patterns for automatic LSP workspace work and broad AST searches. The LSP policy also reads root and nested `.gitignore` files. Built-in private, generated, and dependency directories stay excluded and cannot be enabled again. Explicit semantic requests for one exact file can still route an excluded file; this does not add the file to later automatic work. Runtime and AST consumers use one immutable configured-pattern snapshot per active session. Diagnostic output keeps its configured suppression. An old `lsp.exclude` value is a migration error.
 
-`didOpen` language IDs must follow the server's document contract rather than blindly reuse the extension: ERB uses `erb`, Go module manifests use `go.mod`, and shell dialect extensions use `shellscript`.
+`didOpen` language IDs must follow the server's document contract rather than blindly reuse the extension: ERB uses `erb`, Go module manifests use `go.mod`, and shell dialect extensions use `shellscript`. Trusted C-family associations change only the C-family document ID. They do not change the configured server route. Standalone LSP runtimes keep the existing suffix mapping unless the caller passes an association resolver.
 
 Thread `ctx.cwd` through manager and formatting code; do not use `process.cwd()` for workspace path resolution.
 

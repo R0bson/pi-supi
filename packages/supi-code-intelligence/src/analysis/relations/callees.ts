@@ -2,7 +2,7 @@
  * Structural callee lookup — finds direct calls in the enclosing scope at a target position.
  */
 
-import type { CodeRequestControl } from "@mrclrchtr/supi-code-runtime/api";
+import type { CodeRequestControl, SourceRange } from "@mrclrchtr/supi-code-runtime/api";
 import type { CalleeEntry, CalleeScope, RelationsServiceDeps } from "./types.ts";
 
 export interface CalleesResult {
@@ -14,6 +14,8 @@ export interface CalleesResult {
   /** Original provider reason when callee evidence is unavailable. */
   message: string | null;
   depth: "direct" | "deep";
+  /** Syntax recovery that may hide call sites in the analyzed file. */
+  partial: { file: string; reason: string; errorRanges: readonly SourceRange[] } | null;
 }
 
 /**
@@ -42,7 +44,7 @@ export async function collectCallees(
     targetCharacter,
     depthOrOptions,
   );
-  if (result.kind !== "success") {
+  if (result.kind !== "success" && result.kind !== "partial") {
     return unavailableCallees(targetName, result.message, depth);
   }
 
@@ -69,6 +71,10 @@ export async function collectCallees(
     confidence: "structural",
     message: null,
     depth: result.data.depth ?? depth,
+    partial:
+      result.kind === "partial"
+        ? { file: result.file, reason: result.reason, errorRanges: result.errorRanges }
+        : null,
   };
 }
 
@@ -85,6 +91,7 @@ function unavailableCallees(
     confidence: "unavailable",
     message,
     depth,
+    partial: null,
   };
 }
 

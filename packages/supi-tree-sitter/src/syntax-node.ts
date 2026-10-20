@@ -7,6 +7,10 @@ export interface SyntaxNodeLike {
   text: string;
   children: SyntaxNodeLike[];
   parent: SyntaxNodeLike | null;
+  /** True when this syntax node is an inserted recovery node. */
+  isMissing?: boolean;
+  /** True when this node contains a syntax error or inserted node. */
+  hasError?: boolean;
   startPosition: { row: number; column: number };
   endPosition: { row: number; column: number };
   childForFieldName(name: string): SyntaxNodeLike | null;

@@ -44,6 +44,7 @@ import type {
   RecoverDiagnosticsResult,
   StartupRetryReport,
 } from "./runtime-diagnostics.ts";
+import { runRoutedRename } from "./runtime-rename.ts";
 import type {
   BulkTrackFilesResult,
   RoutedMutationResponse,
@@ -81,6 +82,7 @@ export {
 export type {
   BulkTrackFileOutcome,
   BulkTrackFilesResult,
+  RoutedMutationDocumentSnapshot,
   RoutedMutationResponse,
   SemanticReadinessResult,
   WorkspaceCodeActionRequestOptions,
@@ -236,28 +238,13 @@ class DefaultWorkspaceLspRuntime implements WorkspaceLspRuntime {
     newName: string,
     control?: CodeRequestControl,
   ): Promise<RoutedMutationResponse<WorkspaceEdit | null> | null> {
-    const resolvedPath = this.resolveFilePath(filePath);
-    const client = await this.manager.ensureFileOpen(resolvedPath, {
-      recoverProcessCrash: true,
+    return runRoutedRename({
+      manager: this.manager,
+      file: this.resolveFilePath(filePath),
+      position,
+      newName,
       control,
     });
-    if (!client) return null;
-    if (typeof client.renameDetailed === "function") {
-      const result = await client.renameDetailed(resolvedPath, position, newName, control);
-      return {
-        value: result.kind === "completed" ? result.data : null,
-        authorizedMutationRoots: [client.root],
-        ...(result.kind === "unavailable"
-          ? { reason: result.reason }
-          : result.data === null
-            ? { reason: "LSP server returned no workspace edit." }
-            : {}),
-      };
-    }
-    return {
-      value: await client.rename(resolvedPath, position, newName, control),
-      authorizedMutationRoots: [client.root],
-    };
   }
 
   getOpenDocumentVersion(filePath: string): number | null {

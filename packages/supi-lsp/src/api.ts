@@ -91,6 +91,7 @@ export type {
   ProcessCrashRecoveryOutcome,
   ProcessCrashRecoveryReport,
   RecoverDiagnosticsResult,
+  RoutedMutationDocumentSnapshot,
   RoutedMutationResponse,
   SemanticReadinessResult,
   StartupRetryEntry,

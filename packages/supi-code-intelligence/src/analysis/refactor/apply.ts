@@ -69,7 +69,11 @@ export async function applyWorkspaceEdit(
       if (!freshness.ok) return { kind: "error", reason: freshness.reason };
     }
 
-    const documentState = validateDocumentPreconditions(edit, options.getOpenDocumentVersion);
+    const documentState = validateDocumentPreconditions(
+      edit,
+      options.getOpenDocumentVersion,
+      options.expectedFingerprints,
+    );
     if (!documentState.ok) return { kind: "error", reason: documentState.reason };
 
     const validation = validateEditAgainstFiles(edit);
@@ -92,6 +96,7 @@ export async function applyWorkspaceEdit(
 function validateDocumentPreconditions(
   edit: WorkspaceEdit,
   getOpenDocumentVersion: ApplyOptions["getOpenDocumentVersion"],
+  expectedFingerprints: ApplyOptions["expectedFingerprints"],
 ): { ok: true } | { ok: false; reason: string } {
   const preconditions = edit.documentPreconditions ?? [];
   if (preconditions.length === 0) return { ok: true };
@@ -103,21 +108,37 @@ function validateDocumentPreconditions(
   }
 
   for (const precondition of preconditions) {
-    const currentVersion = getOpenDocumentVersion(precondition.file);
-    if (precondition.kind === "open-document-version" && currentVersion !== precondition.version) {
-      return {
-        ok: false,
-        reason: `File ${precondition.file} open document version has changed since the plan was generated.`,
-      };
-    }
-    if (precondition.kind === "disk-content" && currentVersion !== null) {
-      return {
-        ok: false,
-        reason: `File ${precondition.file} is now open and no longer uses disk content as its master.`,
-      };
-    }
+    const reason = validateDocumentPrecondition(
+      precondition,
+      getOpenDocumentVersion,
+      expectedFingerprints,
+    );
+    if (reason) return { ok: false, reason };
   }
   return { ok: true };
+}
+
+function validateDocumentPrecondition(
+  precondition: NonNullable<WorkspaceEdit["documentPreconditions"]>[number],
+  getOpenDocumentVersion: NonNullable<ApplyOptions["getOpenDocumentVersion"]>,
+  expectedFingerprints: ApplyOptions["expectedFingerprints"],
+): string | null {
+  const currentVersion = getOpenDocumentVersion(precondition.file);
+  if (precondition.kind === "disk-content") {
+    return currentVersion === null
+      ? null
+      : `File ${precondition.file} is now open and no longer uses disk content as its master.`;
+  }
+  if (currentVersion !== precondition.version) {
+    return `File ${precondition.file} open document version has changed since the plan was generated.`;
+  }
+  if (
+    precondition.kind === "open-document-content" &&
+    expectedFingerprints?.get(precondition.file) !== precondition.fingerprint
+  ) {
+    return `File ${precondition.file} synchronized content fingerprint does not match the stored plan.`;
+  }
+  return null;
 }
 
 function validateFingerprints(

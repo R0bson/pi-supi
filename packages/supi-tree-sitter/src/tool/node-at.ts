@@ -2,6 +2,7 @@
 
 import type { CodeRequestControl } from "@mrclrchtr/supi-code-runtime/api";
 import { nodeToRange, publicToTreeSitter, validatePublicPositionBounds } from "../coordinates.ts";
+import { withSyntaxCompleteness } from "../syntax-errors.ts";
 import type { NodeAtResult, SourceRange, TreeSitterResult } from "../types.ts";
 import type { TreeSitterRuntime } from "../worker/runtime.ts";
 
@@ -38,15 +39,18 @@ export async function lookupNodeAt(
       return { kind: "runtime-error", message: "No node found at the given position" };
     }
 
-    return {
-      kind: "success",
+    return withSyntaxCompleteness({
       data: {
         type: node.type,
         range: nodeToRange(node, source),
         text: node.text,
         ancestry: collectAncestry(node, source),
       },
-    };
+      file: filePath,
+      root: tree.rootNode,
+      source,
+      grammarId: parseResult.data.grammarId,
+    });
   } finally {
     tree.delete();
   }

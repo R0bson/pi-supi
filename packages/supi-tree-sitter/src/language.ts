@@ -7,9 +7,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  C_FAMILY_EXTENSIONS,
+  type CFamilyExtension,
+  type CFamilyFileAssociationResolver,
+  defaultCFamilyLanguage,
+} from "@mrclrchtr/supi-code-runtime/api";
 import type { GrammarId, SupportedExtension } from "./types.ts";
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
+const C_FAMILY_GRAMMAR = Object.fromEntries(
+  C_FAMILY_EXTENSIONS.map((extension) => [extension, defaultCFamilyLanguage(extension)]),
+) as Record<CFamilyExtension, GrammarId>;
 
 /** Mapping from file extension to grammar identifier. */
 const EXTENSION_GRAMMAR = {
@@ -25,15 +34,7 @@ const EXTENSION_GRAMMAR = {
   ".pyi": "python",
   ".rs": "rust",
   ".go": "go",
-  ".c": "c",
-  ".h": "c",
-  ".cpp": "cpp",
-  ".hpp": "cpp",
-  ".cc": "cpp",
-  ".cxx": "cpp",
-  ".hxx": "cpp",
-  ".c++": "cpp",
-  ".h++": "cpp",
+  ...C_FAMILY_GRAMMAR,
   ".java": "java",
   ".kt": "kotlin",
   ".kts": "kotlin",
@@ -68,7 +69,12 @@ export function getSupportedExtensionGrammarEntries(): Array<
 }
 
 /** Detect the grammar for a file. Returns undefined if unsupported. */
-export function detectGrammar(filePath: string): GrammarId | undefined {
+export function detectGrammar(
+  filePath: string,
+  associations?: CFamilyFileAssociationResolver,
+): GrammarId | undefined {
+  const familyLanguage = associations?.languageForFile(filePath);
+  if (familyLanguage) return familyLanguage;
   const ext = path.extname(filePath).toLowerCase();
   return EXTENSION_GRAMMAR[ext as SupportedExtension];
 }

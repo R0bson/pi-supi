@@ -8,7 +8,10 @@
 // It does NOT import pi event types or ExtensionAPI.
 
 // biome-ignore lint/style/noExcessiveLinesPerFile: session lifecycle, capability projection, and telemetry stay in one controller.
-import type { WorkspaceRuntime } from "@mrclrchtr/supi-code-runtime/api";
+import type {
+  CFamilyFileAssociationResolver,
+  WorkspaceRuntime,
+} from "@mrclrchtr/supi-code-runtime/api";
 import {
   recordDebugEvent,
   truncateDebugIdentity as truncateIdentity,
@@ -83,6 +86,8 @@ export interface LspRuntimeControllerOptions {
   readonly homeDir?: string;
   /** A policy captured by the owning workspace host. */
   readonly automaticPathPolicy?: AutomaticLspPathPolicy;
+  /** The same immutable C-family association snapshot used by Tree-sitter. */
+  readonly fileAssociations?: CFamilyFileAssociationResolver;
 }
 
 /** Result type from {@link LspRuntimeController.start}. */
@@ -340,6 +345,7 @@ export class LspRuntimeController {
         this.handleManagerLifecycle(manager, generation, transition);
       },
       automaticPathPolicy,
+      this.#options.fileAssociations,
     );
     this.#activeManager = manager;
     this.#latestManagerTransition = null;

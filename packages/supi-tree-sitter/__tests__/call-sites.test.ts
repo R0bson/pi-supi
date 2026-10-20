@@ -23,6 +23,26 @@ afterEach(() => {
 });
 
 describe("TypeScript call-site extraction (full-expression)", () => {
+  it("retains same-line calls by exact source range and excludes JSX tags", async () => {
+    writeFileSync(
+      path.join(tmpDir, "same-line.tsx"),
+      "function invoke() {}\ninvoke(); invoke(); const view = <Widget />;\n",
+    );
+    const session = createTreeSitterSession(tmpDir);
+    try {
+      const result = await session.callSites("same-line.tsx");
+      expect(result.kind).toBe("success");
+      if (result.kind !== "success") return;
+      const calls = result.data.filter((entry) => entry.name === "invoke");
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toMatchObject({ startLine: 2, startCharacter: 1, endLine: 2 });
+      expect(calls[1]?.startCharacter).toBeGreaterThan(calls[0]?.startCharacter ?? 0);
+      expect(result.data.some((entry) => entry.name === "Widget")).toBe(false);
+    } finally {
+      await session.dispose();
+    }
+  });
+
   it("returns full member expression for params.query.trim()", async () => {
     writeFileSync(
       path.join(tmpDir, "sample.ts"),

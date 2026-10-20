@@ -124,6 +124,47 @@ jobs:
       - name: Run test shard
         run: pnpm test --shard=${{ matrix.shard }}/4
 
+  language-baseline:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Load pinned language toolchains
+        run: node scripts/language-baseline/ci-env.mjs >> "$GITHUB_ENV"
+
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.SUPI_BASELINE_NODE_VERSION }}
+
+      - name: Set up Java
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: ${{ env.SUPI_BASELINE_JAVA_DISTRIBUTION }}
+          java-version: ${{ env.SUPI_BASELINE_JAVA_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: ${{ env.SUPI_BASELINE_GO_VERSION }}
+
+      - name: Provision pinned reference servers
+        run: node scripts/language-baseline/provision.mjs
+
+      - name: Run required real-server acceptance suite
+        run: pnpm test:language-baseline:acceptance
+
+      - name: Remove isolated server installs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/supi-language-baseline"
+
   installer:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
@@ -149,7 +190,7 @@ jobs:
 
   verify:
     if: always()
-    needs: [workspace-checks, tests, installer]
+    needs: [workspace-checks, tests, installer, language-baseline]
     runs-on: ubicloud-standard-2
     timeout-minutes: 5
 
@@ -159,9 +200,10 @@ jobs:
           WORKSPACE_RESULT: ${{ needs.workspace-checks.result }}
           TEST_RESULT: ${{ needs.tests.result }}
           INSTALLER_RESULT: ${{ needs.installer.result }}
+          LANGUAGE_BASELINE_RESULT: ${{ needs.language-baseline.result }}
         run: |
-          if [[ "$WORKSPACE_RESULT" != "success" || "$TEST_RESULT" != "success" || "$INSTALLER_RESULT" != "success" ]]; then
-            echo "::error::Verification failed: workspace=$WORKSPACE_RESULT tests=$TEST_RESULT installer=$INSTALLER_RESULT"
+          if [[ "$WORKSPACE_RESULT" != "success" || "$TEST_RESULT" != "success" || "$INSTALLER_RESULT" != "success" || "$LANGUAGE_BASELINE_RESULT" != "success" ]]; then
+            echo "::error::Verification failed: workspace=$WORKSPACE_RESULT tests=$TEST_RESULT installer=$INSTALLER_RESULT language-baseline=$LANGUAGE_BASELINE_RESULT"
             exit 1
           fi
 

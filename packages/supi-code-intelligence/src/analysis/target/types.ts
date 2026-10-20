@@ -8,6 +8,7 @@
 
 import type {
   SemanticProvider as SemanticSubstrate,
+  SourceRange,
   StructuralProvider as StructuralSubstrate,
 } from "@mrclrchtr/supi-code-runtime/api";
 import type { TargetSymbolKind } from "../../session/target-input.ts";
@@ -81,6 +82,8 @@ export interface ResolvedTargetData {
   declarationOccurrence: number;
   name: string | null;
   kind: string | null;
+  /** Structural source-language declaration kind, separate from common identity kind. */
+  nativeKind?: string;
   /** Evidence-backed provider-independent kind used for matching and handle identity. */
   identityKind?: string;
   confidence: "semantic" | "structural" | "heuristic" | "unavailable";
@@ -111,6 +114,8 @@ export interface ResolvedTargetGroupData {
   confidence: "semantic" | "structural" | "heuristic" | "unavailable";
   /** Complete-group declarations whose provider observations could not establish hierarchy. */
   unknownNestingCount: number;
+  /** Partial provider collection; targets remain usable and exact absence is not claimed. */
+  partial?: { reason: string; errorRanges: readonly SourceRange[] };
 }
 
 /**

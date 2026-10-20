@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { decodeStructuralWorkerJsonMessage } from "../../src/session/structural-worker-json.ts";
 import {
   STRUCTURAL_WORKER_LIMITS,
+  STRUCTURAL_WORKER_PROTOCOL_VERSION,
   validateWorkerToParentMessage,
 } from "../../src/session/structural-worker-protocol.ts";
 
 function chunk(payload: unknown, encodedBytes = 2) {
   return {
     kind: "chunk",
-    version: 1,
+    version: STRUCTURAL_WORKER_PROTOCOL_VERSION,
     generation: 1,
     requestId: "test-1",
     sequence: 0,
@@ -26,7 +27,7 @@ describe("Structural Worker JSON transport", () => {
   });
 
   it("keeps non-chunk messages unchanged", () => {
-    const ready = { kind: "ready", version: 1, generation: 1 };
+    const ready = { kind: "ready", version: STRUCTURAL_WORKER_PROTOCOL_VERSION, generation: 1 };
     expect(decodeStructuralWorkerJsonMessage(ready)).toBe(ready);
   });
 

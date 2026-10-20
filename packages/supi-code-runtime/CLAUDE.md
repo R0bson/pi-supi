@@ -8,6 +8,7 @@
 
 - `src/api.ts` — explicit public API surface
 - `src/types.ts` — canonical shared value/result types (includes refactor types: `RefactorOperation`, `RefactorRequest`, `RefactorResult`, `WorkspaceEdit`, `FileEdit`, `DisambiguationCandidate`)
+- `src/file-associations.ts` — validated C-family suffix defaults and ordered workspace-relative glob rules
 - `src/query-result.ts` — typed read-query outcomes and constructors (`completed | partial | unavailable`)
 - `src/capability/types.ts` — capability interfaces (`SemanticProvider`, `StructuralProvider`) and availability states (`CapabilityState`)
 - `src/workspace/runtime.ts` — workspace-scoped capability broker; one instance per `Symbol.for` global singleton, manages both semantic (with refactor metadata) and structural slots
@@ -15,6 +16,7 @@
 ## Guidelines
 
 - Keep the API minimal and package-agnostic.
+- Keep C-family association validation and matching here so Tree-sitter and LSP use one rule set. The resolver only changes existing C-family suffixes. It does not load config or apply trust policy.
 - Do not add pi tool registration or extension exports here.
 - Capability interfaces should be stable interfaces, not classes.
 - Read-only semantic queries use `CodeQueryResult<T>`; preserve completed empty data separately from partial or unavailable collection.

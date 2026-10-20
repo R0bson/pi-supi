@@ -1,7 +1,7 @@
 {
   "extends": "../../../tsconfig.json",
   "include": ["**/*.ts", "../src/**/*.ts"],
-  "exclude": [],
+  "exclude": ["fixtures/language-baseline/**/*.ts"],
   "references": [
     {
       "path": "../../supi-core"

@@ -4,6 +4,7 @@
 import type { CodeRequestControl } from "@mrclrchtr/supi-code-runtime/api";
 import { validatePublicPositionBounds } from "../coordinates.ts";
 import { detectGrammar } from "../language.ts";
+import { withSyntaxCompleteness } from "../syntax-errors.ts";
 import type { SyntaxNodeLike } from "../syntax-node.ts";
 import type { GrammarId, SourceRange, TreeSitterResult } from "../types.ts";
 import { queryParsedFile, type TreeSitterRuntime } from "../worker/runtime.ts";
@@ -197,13 +198,14 @@ export async function lookupCalleesAt(
     }
 
     const queryResult = await queryParsedFile(runtime, {
+      file: filePath,
       grammarId,
       tree,
       source,
       queryString: queryStr,
       control,
     });
-    if (queryResult.kind !== "success") {
+    if (queryResult.kind !== "success" && queryResult.kind !== "partial") {
       return {
         kind: "runtime-error",
         message: "Callee query failed",
@@ -223,8 +225,7 @@ export async function lookupCalleesAt(
     const enclosingRange = nodeToSourceRange(enclosingNode);
     const scopeName = extractScopeName(enclosingNode);
 
-    return {
-      kind: "success",
+    return withSyntaxCompleteness({
       data: {
         enclosingScope: {
           name: scopeName,
@@ -233,7 +234,11 @@ export async function lookupCalleesAt(
         callees,
         depth,
       },
-    };
+      file: filePath,
+      root: tree.rootNode,
+      source,
+      grammarId,
+    });
   } finally {
     tree.delete();
   }

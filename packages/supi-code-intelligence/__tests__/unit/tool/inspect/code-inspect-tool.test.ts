@@ -198,6 +198,75 @@ describe("code_inspect tool", () => {
     );
   });
 
+  it("preserves recovered syntax node and outline evidence in public inspection", async () => {
+    const errorRanges = [{ start: { line: 3, character: 2 }, end: { line: 3, character: 2 } }];
+    registerSemantic();
+    registerStructural({
+      nodeAt: async () => ({
+        kind: "partial",
+        file: "src/index.ts",
+        reason: "Tree-sitter recovered syntax.",
+        errorRanges,
+        data: {
+          type: "identifier",
+          text: "foo",
+          startLine: 4,
+          startCharacter: 12,
+          endLine: 4,
+          endCharacter: 15,
+          ancestry: [],
+        },
+      }),
+      outline: async () => ({
+        kind: "partial",
+        file: "src/index.ts",
+        reason: "Tree-sitter recovered syntax.",
+        errorRanges,
+        data: [
+          {
+            name: "method",
+            kind: "method",
+            startLine: 2,
+            startCharacter: 3,
+            endLine: 5,
+            endCharacter: 4,
+          },
+        ],
+      }),
+    });
+
+    const result = (await executeInspect()) as {
+      content: Array<{ text: string }>;
+      details?: {
+        data: {
+          sections: Array<{
+            key: string;
+            status: string;
+            recovery?: { file: string; errorRanges: typeof errorRanges };
+          }>;
+        };
+      };
+    };
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("foo");
+    expect(text).toContain("method");
+    expect(text).toContain("Error locations: L4:3");
+    expect(result.details?.data.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "node",
+          status: "partial",
+          recovery: { file: "src/index.ts", errorRanges },
+        }),
+        expect.objectContaining({
+          key: "enclosingSymbol",
+          status: "partial",
+          recovery: { file: "src/index.ts", errorRanges },
+        }),
+      ]),
+    );
+  });
+
   it("uses UTF-16 columns to distinguish declarations on the same line", async () => {
     writeFileSync(path.join(tmpDir, "src", "index.ts"), "const first = 1; const second = 2;\n");
     registerStructural({

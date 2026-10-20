@@ -80,6 +80,14 @@ export interface DocumentCodeSymbol extends CodeSymbol {
  */
 export type CodeResult<T> =
   | { kind: "success"; data: T }
+  | {
+      kind: "partial";
+      data: T;
+      file: string;
+      reason: string;
+      /** Syntax error and missing-node ranges in 0-based UTF-16 coordinates. */
+      errorRanges: SourceRange[];
+    }
   | { kind: "unsupported-language"; file: string; message: string }
   | { kind: "file-access-error"; file: string; message: string }
   | { kind: "validation-error"; message: string }
@@ -93,7 +101,10 @@ export type ConfidenceMode = "semantic" | "structural" | "heuristic" | "unavaila
 
 export interface OutlineData {
   name: string;
+  /** Common structural search category. */
   kind: string;
+  /** Source-language declaration kind, separate from common search category. */
+  nativeKind?: string;
   /** Exact 1-based start of the declaration name token, when known. */
   nameAnchor?: SymbolAnchor;
   /** Exclusive 1-based end of a verified literal name span, when known. */
@@ -156,6 +167,12 @@ export interface FileEdit {
 /** A document-state precondition established when semantic edits are normalized. */
 export type DocumentEditPrecondition =
   | { file: string; kind: "open-document-version"; version: number }
+  | {
+      file: string;
+      kind: "open-document-content";
+      version: number;
+      fingerprint: string;
+    }
   | { file: string; kind: "disk-content" };
 
 /**
@@ -257,5 +274,10 @@ export interface CalleesData {
 /** A single call-site match with name and start line. */
 export interface CallSite {
   name: string;
+  /** 1-based UTF-16 start position of the written callee expression. */
   startLine: number;
+  startCharacter: number;
+  /** Exclusive 1-based UTF-16 end position of the captured source expression. */
+  endLine: number;
+  endCharacter: number;
 }

@@ -11,36 +11,25 @@ if (
   throw new Error("Structural Worker process received invalid startup data");
 }
 
-const worker = new Worker(new URL("./bootstrap.mjs", import.meta.url), {
-  execArgv: [],
-  workerData: { cwd, generation },
-});
 const cancellationFlags = new Map();
+let worker = null;
 let closing = false;
 let workerExited = false;
 
-worker.on("message", (message) => {
-  if (message.kind === "terminal") cancellationFlags.delete(message.requestId);
-  send({ channel: "supi-tree-sitter-worker", message });
-});
-worker.on("error", (error) => {
-  send(
-    {
-      channel: "supi-tree-sitter-worker",
-      message: { kind: "worker-error", message: error.message },
-    },
-    () => stopWorker(1),
-  );
-});
-worker.on("exit", (code) => {
-  workerExited = true;
-  cancellationFlags.clear();
-  process.exitCode = code === 0 ? 1 : code;
-  disconnect();
-});
-
 process.on("message", (value) => {
   if (!isParentChannel(value)) {
+    stopWorker(1);
+    return;
+  }
+  if (!worker) {
+    if (!isInitialization(value.message)) {
+      stopWorker(1);
+      return;
+    }
+    startWorker(value.message);
+    return;
+  }
+  if (value.message.kind === "initialize") {
     stopWorker(1);
     return;
   }
@@ -48,6 +37,36 @@ process.on("message", (value) => {
 });
 process.on("disconnect", () => stopWorker());
 if (!process.connected) stopWorker();
+
+function startWorker(initialization) {
+  worker = new Worker(new URL("./bootstrap.mjs", import.meta.url), {
+    execArgv: [],
+    workerData: {
+      cwd,
+      generation,
+      fileAssociations: initialization.fileAssociations,
+    },
+  });
+  worker.on("message", (message) => {
+    if (message.kind === "terminal") cancellationFlags.delete(message.requestId);
+    send({ channel: "supi-tree-sitter-worker", message });
+  });
+  worker.on("error", (error) => {
+    send(
+      {
+        channel: "supi-tree-sitter-worker",
+        message: { kind: "worker-error", message: error.message },
+      },
+      () => stopWorker(1),
+    );
+  });
+  worker.on("exit", (code) => {
+    workerExited = true;
+    cancellationFlags.clear();
+    process.exitCode = code === 0 ? 1 : code;
+    disconnect();
+  });
+}
 
 function forwardToWorker(message) {
   if (!message || typeof message !== "object") {
@@ -68,6 +87,20 @@ function forwardToWorker(message) {
     if (cancellationFlag) Atomics.store(cancellationFlag, 0, 1);
   }
   worker.postMessage(message);
+}
+
+function isInitialization(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 5 &&
+    value.kind === "initialize" &&
+    value.version === 1 &&
+    value.generation === generation &&
+    value.cwd === cwd &&
+    Array.isArray(value.fileAssociations)
+  );
 }
 
 function isParentChannel(value) {
@@ -105,5 +138,9 @@ function stopWorker(exitCode) {
   closing = true;
   if (exitCode !== undefined) process.exitCode = exitCode;
   cancellationFlags.clear();
+  if (!worker) {
+    disconnect();
+    return;
+  }
   void worker.terminate().finally(disconnect);
 }

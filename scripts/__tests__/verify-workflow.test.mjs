@@ -13,6 +13,7 @@ const workspace = job("workspace-checks");
 const tests = job("tests");
 const verify = job("verify");
 const installer = job("installer");
+const languageBaseline = job("language-baseline");
 const gate =
   verify.match(/^ {8}run: \|\n((?: {10}.*\n)+)/m)?.[1]?.replace(/^ {10}/gm, "") ?? "exit 99";
 
@@ -44,11 +45,19 @@ describe("parallel verification workflow", () => {
   });
 
   it("keeps verify as the required result and release dependency", () => {
-    expect(verify).toContain("needs: [workspace-checks, tests, installer]");
+    expect(verify).toContain("needs: [workspace-checks, tests, installer, language-baseline]");
     expect(verify).toContain("if: always()");
     expect(verify).toContain("WORKSPACE_RESULT: ${{ needs.workspace-checks.result }}");
     expect(verify).toContain("TEST_RESULT: ${{ needs.tests.result }}");
+    expect(verify).toContain("LANGUAGE_BASELINE_RESULT: ${{ needs.language-baseline.result }}");
     expect(job("release-please")).toContain("needs: [actionlint, conventional-commits, verify]");
+  });
+
+  it("requires pinned live language-server checks on Linux and macOS", () => {
+    expect(languageBaseline).toContain("os: [ubuntu-latest, macos-latest]");
+    expect(languageBaseline).toContain("node scripts/language-baseline/provision.mjs");
+    expect(languageBaseline).toContain("pnpm test:language-baseline:acceptance");
+    expect(languageBaseline).not.toContain("continue-on-error:");
   });
 
   it("checks the CLI on supported systems and the minimum Node runtime", () => {
@@ -62,16 +71,19 @@ describe("parallel verification workflow", () => {
   });
 
   it.each([
-    ["success", "success", 0],
-    ["failure", "success", 1],
-    ["success", "failure", 1],
-    ["cancelled", "success", 1],
-    ["success", "cancelled", 1],
-    ["skipped", "success", 1],
-    ["success", "skipped", 1],
+    ["success", "success", "success", 0],
+    ["failure", "success", "success", 1],
+    ["success", "failure", "success", 1],
+    ["success", "success", "failure", 1],
+    ["cancelled", "success", "success", 1],
+    ["success", "cancelled", "success", 1],
+    ["success", "success", "cancelled", 1],
+    ["skipped", "success", "success", 1],
+    ["success", "skipped", "success", 1],
+    ["success", "success", "skipped", 1],
   ])(
-    "requires success from both jobs: workspace=%s tests=%s",
-    (workspaceResult, testResult, status) => {
+    "requires success from all jobs: workspace=%s tests=%s language-baseline=%s",
+    (workspaceResult, testResult, baselineResult, status) => {
       const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", gate], {
         encoding: "utf8",
         env: {
@@ -79,6 +91,7 @@ describe("parallel verification workflow", () => {
           WORKSPACE_RESULT: workspaceResult,
           TEST_RESULT: testResult,
           INSTALLER_RESULT: "success",
+          LANGUAGE_BASELINE_RESULT: baselineResult,
         },
       });
       expect(result.status, result.stderr).toBe(status);
@@ -95,6 +108,7 @@ describe("parallel verification workflow", () => {
           WORKSPACE_RESULT: "success",
           TEST_RESULT: "success",
           INSTALLER_RESULT: result,
+          LANGUAGE_BASELINE_RESULT: "success",
         },
       });
       expect(check.status).toBe(1);

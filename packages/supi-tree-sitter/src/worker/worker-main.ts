@@ -1,5 +1,9 @@
 import type { MessagePort } from "node:worker_threads";
-import { isCodeRequestDeadlineError } from "@mrclrchtr/supi-code-runtime/api";
+import {
+  type CFamilyFileAssociationRule,
+  createCFamilyFileAssociationResolver,
+  isCodeRequestDeadlineError,
+} from "@mrclrchtr/supi-code-runtime/api";
 import type { StructuralTimingEvent } from "../session/structural-timing.ts";
 import { assertStructuralProtocolMessageSize } from "../session/structural-worker-message-size.ts";
 import {
@@ -18,6 +22,7 @@ import { StructuralWorkerService } from "./service.ts";
 interface WorkerBootstrapData {
   readonly cwd: string;
   readonly generation: number;
+  readonly fileAssociations?: readonly CFamilyFileAssociationRule[];
 }
 
 interface ActiveWorkerRequest {
@@ -36,7 +41,15 @@ export async function runStructuralWorker(
   parentPort: MessagePort,
   workerData: WorkerBootstrapData,
 ): Promise<void> {
-  const runtime = new TreeSitterRuntime(workerData.cwd, (event) => forwardObservation(event));
+  const associationResolver = createCFamilyFileAssociationResolver(
+    workerData.cwd,
+    workerData.fileAssociations ?? [],
+  );
+  const runtime = new TreeSitterRuntime(
+    workerData.cwd,
+    (event) => forwardObservation(event),
+    associationResolver,
+  );
   const service = new StructuralWorkerService(runtime);
   let active: ActiveWorkerRequest | null = null;
 

@@ -2,6 +2,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  type CFamilyFileAssociationResolver,
+  defaultCFamilyLanguage,
+} from "@mrclrchtr/supi-code-runtime/api";
 
 // ── Language ID Detection ─────────────────────────────────────────────
 
@@ -19,15 +23,6 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   rs: "rust",
   go: "go",
   mod: "go.mod",
-  c: "c",
-  h: "c",
-  cpp: "cpp",
-  hpp: "cpp",
-  cc: "cpp",
-  cxx: "cpp",
-  hxx: "cpp",
-  "c++": "cpp",
-  "h++": "cpp",
   json: "json",
   yaml: "yaml",
   yml: "yaml",
@@ -58,8 +53,14 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   zig: "zig",
 };
 
-/** Detect the LSP languageId from a file path. */
-export function detectLanguageId(filePath: string): string {
+/** Detect the LSP languageId from a file path and optional workspace snapshot. */
+export function detectLanguageId(
+  filePath: string,
+  associations?: CFamilyFileAssociationResolver,
+): string {
+  const cFamilyLanguage =
+    associations?.languageForFile(filePath) ?? defaultCFamilyLanguage(path.extname(filePath));
+  if (cFamilyLanguage) return cFamilyLanguage;
   const ext = path.extname(filePath).slice(1).toLowerCase();
   return EXT_TO_LANGUAGE[ext] ?? ext;
 }

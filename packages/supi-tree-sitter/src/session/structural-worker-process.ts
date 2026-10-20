@@ -1,11 +1,14 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
+import type { CFamilyFileAssociationRule } from "@mrclrchtr/supi-code-runtime/api";
 import { decodeStructuralWorkerJsonMessage } from "./structural-worker-json.ts";
 import { resolveStructuralWorkerNode } from "./structural-worker-node.ts";
-import type {
-  ParentToStructuralWorkerMessage,
-  StructuralWorkerToParentMessage,
+import {
+  type ParentToStructuralWorkerMessage,
+  STRUCTURAL_WORKER_PROTOCOL_VERSION,
+  type StructuralWorkerInitializationMessage,
+  type StructuralWorkerToParentMessage,
 } from "./structural-worker-protocol.ts";
 
 const PARENT_CHANNEL = "supi-tree-sitter-parent";
@@ -23,6 +26,7 @@ export interface StructuralWorkerLike {
 export function createStructuralWorkerProcess(options: {
   readonly cwd: string;
   readonly generation: number;
+  readonly fileAssociations: readonly CFamilyFileAssociationRule[];
 }): StructuralWorkerLike {
   const hostPath = fileURLToPath(new URL("../worker/process-host.mjs", import.meta.url));
   const jsonIpc = Boolean(process.versions.bun);
@@ -36,7 +40,13 @@ export function createStructuralWorkerProcess(options: {
     stdio: ["ignore", "ignore", "inherit", "ipc"],
     windowsHide: true,
   });
-  return new StructuralWorkerProcess(child, jsonIpc);
+  return new StructuralWorkerProcess(child, jsonIpc, {
+    kind: "initialize",
+    version: STRUCTURAL_WORKER_PROTOCOL_VERSION,
+    generation: options.generation,
+    cwd: options.cwd,
+    fileAssociations: options.fileAssociations,
+  });
 }
 
 class StructuralWorkerProcess implements StructuralWorkerLike {
@@ -44,12 +54,19 @@ class StructuralWorkerProcess implements StructuralWorkerLike {
   readonly #child: ChildProcess;
   readonly #jsonIpc: boolean;
 
-  constructor(child: ChildProcess, jsonIpc: boolean) {
+  constructor(
+    child: ChildProcess,
+    jsonIpc: boolean,
+    initialization: StructuralWorkerInitializationMessage,
+  ) {
     this.#child = child;
     this.#jsonIpc = jsonIpc;
     child.on("message", (value: unknown) => this.#receive(value));
     child.on("error", (error) => this.#events.emit("error", error));
     child.on("exit", (code) => this.#events.emit("exit", code ?? 1));
+    child.send({ channel: PARENT_CHANNEL, message: initialization }, (error) => {
+      if (error) this.#events.emit("error", error);
+    });
   }
 
   postMessage(message: ParentToStructuralWorkerMessage): void {

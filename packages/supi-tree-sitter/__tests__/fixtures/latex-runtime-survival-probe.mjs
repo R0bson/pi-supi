@@ -16,9 +16,9 @@ const generations = [];
 const errors = [];
 const exits = [];
 const workers = [];
-const workerFactory = ({ cwd: workerCwd, generation }) => {
+const workerFactory = ({ cwd: workerCwd, generation, fileAssociations }) => {
   generations.push(generation);
-  const worker = createStructuralWorkerProcess({ cwd: workerCwd, generation });
+  const worker = createStructuralWorkerProcess({ cwd: workerCwd, generation, fileAssociations });
   worker.on("error", (error) => errors.push(error.message));
   worker.on("exit", (code) => exits.push(code));
   workers.push(worker);

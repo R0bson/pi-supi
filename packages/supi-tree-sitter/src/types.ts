@@ -13,6 +13,16 @@ export interface SourceRange {
 /** Discriminated result union for all service operations. */
 export type TreeSitterResult<T> =
   | { kind: "success"; data: T }
+  | {
+      kind: "partial";
+      data: T;
+      /** Affected source file. */
+      file: string;
+      /** Why recovered syntax may hide structural evidence. */
+      reason: string;
+      /** Available syntax error and missing-node ranges, in 1-based UTF-16 coordinates. */
+      errorRanges: SourceRange[];
+    }
   | { kind: "unsupported-language"; file: string; message: string }
   | { kind: "file-access-error"; file: string; message: string }
   | { kind: "validation-error"; message: string }
@@ -21,7 +31,10 @@ export type TreeSitterResult<T> =
 /** Structural outline item. */
 export interface OutlineItem {
   name: string;
+  /** Common structural search category. */
   kind: string;
+  /** Source-language declaration kind, separate from common search category. */
+  nativeKind?: string;
   range: SourceRange;
   /** Exact 1-based start of the declaration name, when available. */
   nameAnchor?: { line: number; character: number };
@@ -79,6 +92,9 @@ export interface QueryCapture {
 export interface CallSiteMatch {
   name: string;
   startLine: number;
+  startCharacter: number;
+  endLine: number;
+  endCharacter: number;
 }
 
 /**

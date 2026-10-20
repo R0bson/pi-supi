@@ -138,8 +138,9 @@ function orientationDisplaySection(section: OrientationSectionData): ToolDisplay
     totalCount: items.length,
     omittedCount: 0,
     partialReason:
-      section.reason ??
-      section.evidenceLists.find((evidence) => evidence.partialReason)?.partialReason,
+      section.evidenceLists.find((evidence) => evidence.partialReason)?.partialReason ??
+      (section.reason ? "provider-limited" : null),
+    ...(section.reason ? { partialMessage: section.reason } : {}),
     format: formatOrientationItem,
   });
 }
@@ -179,6 +180,7 @@ function toDetailsSection(section: OrientationSectionData): OrientationSectionDe
     confidence: section.confidence,
     provenance: section.provenance.map((provenance) => ({ ...provenance })),
     evidenceLists: section.evidenceLists.map((evidence) => ({ ...evidence })),
+    ...(section.errorRanges ? { errorRanges: [...section.errorRanges] } : {}),
   };
 }
 

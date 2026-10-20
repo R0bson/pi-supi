@@ -156,7 +156,7 @@ async function collectCalleesRelation(options: CollectRelationOptions): Promise<
   return {
     kind: "ok",
     rel: "callees",
-    data: { enclosingScope, calls, depth: result.depth },
+    data: { enclosingScope, calls, depth: result.depth, recovery: result.partial },
     readNext: [
       readNextEnclosingScope(
         toDisplayPath(options.cwd, options.file),

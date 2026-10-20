@@ -129,6 +129,7 @@ function graphSectionDetails(
       ? { ...calls.enclosingScope, file: toDisplayPath(cwd, calls.enclosingScope.file) }
       : null,
     depth: calls?.depth ?? null,
+    recovery: calls?.recovery ?? null,
     fileGroups,
   };
 }
@@ -147,15 +148,32 @@ function assembleGraphSection(section: GraphSection, maxResults: number): Assemb
           partialReason: section.data.partialReason,
         }),
       };
-    case "callees":
+    case "callees": {
+      const evidence = section.data.recovery
+        ? createPartialEvidenceList({
+            key: "callees.calls",
+            items: [...section.data.calls],
+            maxResults,
+            partialReason: "provider-limited",
+          })
+        : createEvidenceList({
+            key: "callees.calls",
+            items: [...section.data.calls],
+            maxResults,
+          });
       return {
         ...section,
-        evidence: createEvidenceList({
-          key: "callees.calls",
-          items: [...section.data.calls],
-          maxResults,
-        }),
+        evidence: section.data.recovery
+          ? {
+              ...evidence,
+              metadata: {
+                ...evidence.metadata,
+                partialMessage: recoveryMessage(section.data.recovery),
+              },
+            }
+          : evidence,
       };
+    }
     case "implements":
       return {
         ...section,
@@ -190,6 +208,14 @@ function createRelationEvidenceList<T>(params: {
       invalidLocationCount: params.invalidLocationCount,
     },
   };
+}
+
+function recoveryMessage(recovery: NonNullable<CalleeGraphSection["data"]["recovery"]>): string {
+  const locations = recovery.errorRanges.map(
+    (range) => `L${range.start.line + 1}:${range.start.character + 1}`,
+  );
+  const suffix = locations.length > 0 ? ` Error locations: ${locations.join(", ")}.` : "";
+  return `${recovery.file}: ${recovery.reason}${suffix}`;
 }
 
 function evidenceTotal(evidence: EvidenceList<unknown>): number {

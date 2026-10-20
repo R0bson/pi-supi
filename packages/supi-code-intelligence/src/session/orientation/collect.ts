@@ -1,7 +1,7 @@
 // biome-ignore-all lint/style/noExcessiveLinesPerFile: symbol-orientation section builders stay together to preserve one rendering contract
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import type { ConfidenceMode } from "@mrclrchtr/supi-code-runtime/api";
+import type { ConfidenceMode, SourceRange } from "@mrclrchtr/supi-code-runtime/api";
 import { isCodeRequestInterruption } from "@mrclrchtr/supi-code-runtime/api";
 import { uriToFile } from "@mrclrchtr/supi-core/path";
 import type { Diagnostic } from "@mrclrchtr/supi-lsp/api";
@@ -35,6 +35,7 @@ interface TargetSectionCollection {
   readonly status: "complete" | "partial" | "unavailable";
   readonly reason: string | null;
   readonly evidenceLists: readonly EvidenceListMetadata[];
+  readonly errorRanges?: readonly SourceRange[];
 }
 
 const DEFAULT_TARGET_SECTIONS: OrientationSection[] = ["defs", "docs", "diagnostics"];
@@ -165,7 +166,12 @@ async function buildEnrichedDefsSection(
   limit: number,
 ): Promise<TargetSectionCollection> {
   const items = buildDefinitionItems(target, deps.cwd, treeContext);
-  const contextHasSemanticEvidence = Boolean(
+  const recovery = treeContext?.recovery ?? [];
+  const recoveryReason = recovery
+    .map(({ operation, reason }) => `${operation}: ${reason}`)
+    .join("; ");
+  const recoveryRanges = uniqueRecoveryRanges(recovery);
+  const hasSemanticContext = Boolean(
     treeContext?.hover || (treeContext?.definition?.length ?? 0) > 0,
   );
   const hasStructuralEvidence = hasRenderableItems(items);
@@ -178,30 +184,75 @@ async function buildEnrichedDefsSection(
     );
   }
   if (deps.lspRuntime.kind !== "ready") {
-    return {
+    return unavailableDefinitionCollection({
       items,
       hasStructuralEvidence,
-      hasSemanticEvidence: contextHasSemanticEvidence,
-      status: contextHasSemanticEvidence ? "partial" : "unavailable",
-      reason: deps.semanticReadinessReason ?? "Definition targets require a live language server.",
-      evidenceLists: [],
-    };
+      hasSemanticContext,
+      recoveryReason,
+      recoveryRanges,
+      readinessReason: deps.semanticReadinessReason ?? null,
+    });
   }
-
   const definitions = await collectDefinitionTargets(target, deps, limit);
-  if (definitions.items.length > 0) {
-    if (items.length > 0) items.push({ kind: "blank" });
-    items.push({ kind: "paragraph", text: "**Definition:**" }, ...definitions.items);
-  }
-  const hasSemanticEvidence = contextHasSemanticEvidence || definitions.hasSemanticEvidence;
-  return {
+  return mergeDefinitionCollection({
     items,
+    definitions,
     hasStructuralEvidence,
+    hasSemanticContext,
+    recoveryReason,
+    recoveryRanges,
+  });
+}
+
+function unavailableDefinitionCollection(input: {
+  items: OrientationItem[];
+  hasStructuralEvidence: boolean;
+  hasSemanticContext: boolean;
+  recoveryReason: string;
+  recoveryRanges: readonly SourceRange[];
+  readinessReason: string | null;
+}): TargetSectionCollection {
+  return {
+    items: input.items,
+    hasStructuralEvidence: input.hasStructuralEvidence,
+    hasSemanticEvidence: input.hasSemanticContext,
+    status: input.recoveryReason || input.hasSemanticContext ? "partial" : "unavailable",
+    reason: [
+      input.recoveryReason || null,
+      input.readinessReason ?? "Definition targets require a live language server.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    evidenceLists: [],
+    ...(input.recoveryRanges.length > 0 ? { errorRanges: [...input.recoveryRanges] } : {}),
+  };
+}
+
+function mergeDefinitionCollection(input: {
+  items: OrientationItem[];
+  definitions: Awaited<ReturnType<typeof collectDefinitionTargets>>;
+  hasStructuralEvidence: boolean;
+  hasSemanticContext: boolean;
+  recoveryReason: string;
+  recoveryRanges: readonly SourceRange[];
+}): TargetSectionCollection {
+  if (input.definitions.items.length > 0) {
+    if (input.items.length > 0) input.items.push({ kind: "blank" });
+    input.items.push({ kind: "paragraph", text: "**Definition:**" }, ...input.definitions.items);
+  }
+  const hasSemanticEvidence = input.hasSemanticContext || input.definitions.hasSemanticEvidence;
+  return {
+    items: input.items,
+    hasStructuralEvidence: input.hasStructuralEvidence,
     hasSemanticEvidence,
     status:
-      definitions.status === "unavailable" && hasSemanticEvidence ? "partial" : definitions.status,
-    reason: definitions.reason,
-    evidenceLists: definitions.evidenceLists,
+      input.recoveryReason || (input.definitions.status === "unavailable" && hasSemanticEvidence)
+        ? "partial"
+        : input.definitions.status,
+    reason:
+      [input.recoveryReason || null, input.definitions.reason].filter(Boolean).join(" ") || null,
+    evidenceLists: input.definitions.evidenceLists,
+    ...(input.recoveryRanges.length > 0 ? { errorRanges: [...input.recoveryRanges] } : {}),
   };
 }
 
@@ -504,6 +555,16 @@ async function maybeGatherTreeContext(
   );
 }
 
+function uniqueRecoveryRanges(
+  recovery: readonly { errorRanges: readonly SourceRange[] }[],
+): SourceRange[] {
+  const ranges = new Map<string, SourceRange>();
+  for (const item of recovery) {
+    for (const range of item.errorRanges) ranges.set(JSON.stringify(range), range);
+  }
+  return [...ranges.values()];
+}
+
 function buildDefinitionItems(
   target: Readonly<TargetStoreEntry> | null | undefined,
   cwd: string,
@@ -528,6 +589,16 @@ function buildDefinitionItems(
   }
   if (treeContext?.nodeInfo?.type) {
     items.push({ kind: "list-item", text: `Node: \`${treeContext.nodeInfo.type}\`` });
+  }
+  for (const recovery of treeContext?.recovery ?? []) {
+    const locations = recovery.errorRanges.map(
+      (range) => `L${range.start.line + 1}:${range.start.character + 1}`,
+    );
+    const suffix = locations.length > 0 ? ` Errors: ${locations.join(", ")}.` : "";
+    items.push({
+      kind: "paragraph",
+      text: `Partial ${recovery.operation} evidence in \`${recovery.file}\`: ${recovery.reason}.${suffix}`,
+    });
   }
   if (treeContext?.hover?.contents) {
     items.push(...hoverItems(treeContext.hover.contents));
@@ -682,6 +753,7 @@ function targetSectionResult(
       confidence,
       provenance,
       evidenceLists: collection.evidenceLists,
+      ...(collection.errorRanges ? { errorRanges: [...collection.errorRanges] } : {}),
       items: collection.items,
     },
     hasStructuralEvidence: collection.hasStructuralEvidence,

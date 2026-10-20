@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import type { CFamilyFileAssociationResolver } from "@mrclrchtr/supi-code-runtime/api";
 import { getDefaultWorkspaceRuntime } from "@mrclrchtr/supi-code-runtime/api";
 import {
   type AutomaticLspPathPolicy,
@@ -8,6 +9,7 @@ import {
   LspRuntimeController,
 } from "@mrclrchtr/supi-lsp/api";
 import { TreeSitterRuntimeController } from "@mrclrchtr/supi-tree-sitter/api";
+import { loadProjectFileAssociations } from "../config.ts";
 
 const HOSTS = Symbol.for("supi-code-intelligence/workspace-provider-hosts");
 const CLOSING_HOSTS = Symbol.for("supi-code-intelligence/closing-workspace-provider-hosts");
@@ -22,6 +24,8 @@ export interface WorkspaceProviderHostLease {
   lspController: LspRuntimeController | null;
   /** Immutable automatic exclusion policy captured for this lease. */
   automaticPathPolicy: AutomaticLspPathPolicy;
+  /** Shared immutable C-family language snapshot captured by the host. */
+  fileAssociations: CFamilyFileAssociationResolver;
   sentinelSnapshot: Map<string, number>;
   release(): Promise<void>;
 }
@@ -66,6 +70,8 @@ class WorkspaceProviderHost {
   #settledStart = Promise.resolve();
   #closed = false;
   #automaticPathPolicies = new Map<boolean, AutomaticLspPathPolicy>();
+  #fileAssociations: CFamilyFileAssociationResolver | null = null;
+  #projectTrusted: boolean | null = null;
   /** One configuration home owns all providers and policies until shutdown. */
   #homeDir: string | null = null;
 
@@ -81,6 +87,13 @@ class WorkspaceProviderHost {
         `Workspace ${this.cwd} already uses configuration home ${this.#homeDir}. Cannot use ${normalizedHome} until all existing provider leases are released.`,
       );
     }
+    if (this.#projectTrusted !== null && this.#projectTrusted !== projectTrusted) {
+      throw new Error(
+        `Workspace ${this.cwd} already uses projectTrusted=${this.#projectTrusted}. Cannot use projectTrusted=${projectTrusted} until all existing provider leases are released.`,
+      );
+    }
+    const fileAssociations =
+      this.#fileAssociations ?? loadProjectFileAssociations(this.cwd, projectTrusted);
     const automaticPathPolicy =
       this.#automaticPathPolicies.get(projectTrusted) ??
       createDefaultAutomaticLspPathPolicy(this.cwd, {
@@ -88,11 +101,15 @@ class WorkspaceProviderHost {
         homeDir: normalizedHome,
       });
     this.#homeDir = normalizedHome;
+    this.#projectTrusted = projectTrusted;
+    this.#fileAssociations = fileAssociations;
     this.#automaticPathPolicies.set(projectTrusted, automaticPathPolicy);
     // Count this pending acquirer before awaiting startup so the final active lease cannot shut it down.
     this.#leases++;
     this.#settledStart = this.#settledStart
-      .then(() => this.#startMissing(projectTrusted, automaticPathPolicy, normalizedHome))
+      .then(() =>
+        this.#startMissing(projectTrusted, automaticPathPolicy, fileAssociations, normalizedHome),
+      )
       .catch(() => undefined);
     await this.#settledStart;
     let released = false;
@@ -100,6 +117,7 @@ class WorkspaceProviderHost {
       cwd: this.cwd,
       lspController: projectTrusted ? this.#lsp : null,
       automaticPathPolicy,
+      fileAssociations,
       sentinelSnapshot:
         projectTrusted && this.#lsp?.kind === "ready"
           ? (this.#lsp.workspaceRuntime?.scanWorkspaceSentinels() ?? new Map())
@@ -127,12 +145,13 @@ class WorkspaceProviderHost {
   async #startMissing(
     projectTrusted: boolean,
     automaticPathPolicy: AutomaticLspPathPolicy,
+    fileAssociations: CFamilyFileAssociationResolver,
     homeDir?: string,
   ): Promise<void> {
     const runtime = getDefaultWorkspaceRuntime();
     if (!this.#treeStarted) {
       this.#treeStarted = true;
-      this.#tree = new TreeSitterRuntimeController(this.cwd, runtime);
+      this.#tree = new TreeSitterRuntimeController(this.cwd, runtime, fileAssociations);
       await this.#tree.start().catch(() => undefined);
     }
     if (!projectTrusted || this.#lspStarted) return;
@@ -141,6 +160,7 @@ class WorkspaceProviderHost {
       automaticPathPolicy,
       projectTrusted,
       homeDir,
+      fileAssociations,
     });
     await this.#lsp.start().catch(() => undefined);
   }

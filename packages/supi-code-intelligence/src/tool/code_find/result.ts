@@ -72,7 +72,13 @@ export function assembleFindWorkflowResult(
       omittedCount: assembled.totals.omittedCount,
       evidenceLists: [...assembled.evidenceLists],
       nextQueries: assembledNextQueries(assembled),
-      ...(outcome.data.kind === "ast" ? { scan: outcome.data.result.scan } : {}),
+      ...(outcome.data.kind === "ast"
+        ? {
+            scan: outcome.data.result.scan,
+            astMatches: [...outcome.data.result.matches],
+            structuralFailures: [...outcome.data.result.failures],
+          }
+        : {}),
       ...(outcome.data.kind === "semantic" && outcome.data.partialMetadata?.automaticPathExclusion
         ? { automaticPathExclusion: outcome.data.partialMetadata.automaticPathExclusion }
         : {}),
@@ -129,8 +135,16 @@ function findItems(
 
 function formatFindDisplayItem(kind: "semantic" | "ast", item: unknown): string {
   if (kind === "ast") {
-    const match = item as { name: string; kind: string; file: string; line: number };
-    return `${match.name} (${match.kind}) — ${match.file}:L${match.line}`;
+    const match = item as {
+      name: string;
+      kind: string;
+      file: string;
+      line: number;
+      startCharacter: number;
+      endLine: number;
+      endCharacter: number;
+    };
+    return `${match.name} (${match.kind}) — ${match.file}:L${match.line}:${match.startCharacter}–L${match.endLine}:${match.endCharacter}`;
   }
 
   const symbol = item as {

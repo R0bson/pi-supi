@@ -544,6 +544,27 @@ describe("loadConfig", () => {
     fs.rmSync(tmpDir, { recursive: true });
   });
 
+  it("keeps the clangd route when project file associations are present", () => {
+    const tmpDir = makeTmpDir();
+    const homeDir = makeTmpDir();
+    fs.mkdirSync(path.join(tmpDir, ".pi", "supi"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".pi", "supi", "config.json"),
+      JSON.stringify({
+        "code-intelligence": {
+          fileAssociations: [{ pattern: "**/*.h", language: "cpp" }],
+        },
+      }),
+    );
+
+    const config = loadConfig(tmpDir, { homeDir, projectTrusted: true });
+
+    expect(config.servers.c?.command).toBe("clangd");
+    expect(getServerForFile(config, "include/api.h")?.[0]).toBe("c");
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  });
+
   it("resolves cpp alias to c when overriding", () => {
     const tmpDir = makeTmpDir();
     fs.mkdirSync(path.join(tmpDir, ".pi", "supi"), { recursive: true });

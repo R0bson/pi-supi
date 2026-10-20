@@ -1,0 +1,17 @@
+[
+  {
+    "directory": ".",
+    "file": "src/model.cpp",
+    "arguments": ["clang++", "-Iinclude", "-std=c++20", "-c", "src/model.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "src/widget.cpp",
+    "arguments": ["clang++", "-Iinclude", "-std=c++20", "-c", "src/widget.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "src/main.cpp",
+    "arguments": ["clang++", "-Iinclude", "-std=c++20", "-c", "src/main.cpp"]
+  }
+]

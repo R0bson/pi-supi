@@ -1,6 +1,6 @@
-import { detectGrammar } from "../language.ts";
 import { supportsGrammarOperation } from "../operation-support.ts";
 import type { StructuralWorkerOperation } from "../session/structural-worker-protocol.ts";
+import { withSyntaxCompleteness } from "../syntax-errors.ts";
 import { extractCallSites } from "../tool/call-sites.ts";
 import { lookupCalleesAt } from "../tool/callees.ts";
 import { extractExports } from "../tool/exports.ts";
@@ -68,16 +68,19 @@ export class StructuralWorkerService {
     file: string,
     control: StructuralRequestControl,
   ): Promise<TreeSitterResult<unknown>> {
-    const unsupported = unsupportedOperation(file, "outline");
+    const unsupported = unsupportedOperation(this.runtime, file, "outline");
     if (unsupported) return unsupported;
     const result = await this.runtime.parseFile(file, control);
     if (result.kind !== "success") return result;
     try {
       throwIfStructuralRequestInterrupted(control);
-      return {
-        kind: "success",
-        data: extractOutline(result.data.tree.rootNode, result.data.source),
-      };
+      return withSyntaxCompleteness({
+        data: extractOutline(result.data.tree.rootNode, result.data.source, result.data.grammarId),
+        file,
+        root: result.data.tree.rootNode,
+        source: result.data.source,
+        grammarId: result.data.grammarId,
+      });
     } finally {
       result.data.tree.delete();
     }
@@ -87,7 +90,7 @@ export class StructuralWorkerService {
     file: string,
     control: StructuralRequestControl,
   ): Promise<TreeSitterResult<unknown>> {
-    const unsupported = unsupportedOperation(file, "imports");
+    const unsupported = unsupportedOperation(this.runtime, file, "imports");
     return unsupported ?? extractImports(this.runtime, file, control);
   }
 
@@ -95,16 +98,17 @@ export class StructuralWorkerService {
     file: string,
     control: StructuralRequestControl,
   ): Promise<TreeSitterResult<unknown>> {
-    const unsupported = unsupportedOperation(file, "exports");
+    const unsupported = unsupportedOperation(this.runtime, file, "exports");
     return unsupported ?? extractExports(this.runtime, file, control);
   }
 }
 
 function unsupportedOperation(
+  runtime: TreeSitterRuntime,
   file: string,
   operation: "outline" | "imports" | "exports",
 ): TreeSitterResult<never> | null {
-  const grammarId = detectGrammar(file);
+  const grammarId = runtime.getGrammarForFile(file);
   if (!grammarId || supportsGrammarOperation(grammarId, operation)) return null;
   return {
     kind: "unsupported-language",

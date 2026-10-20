@@ -2,6 +2,7 @@
 
 import type { CodeRequestControl } from "@mrclrchtr/supi-code-runtime/api";
 import { nodeToRange } from "../coordinates.ts";
+import { withSyntaxCompleteness } from "../syntax-errors.ts";
 import type { SyntaxNodeLike } from "../syntax-node.ts";
 import type { ExportRecord, TreeSitterResult } from "../types.ts";
 import type { TreeSitterRuntime } from "../worker/runtime.ts";
@@ -21,7 +22,13 @@ export async function extractExports(
 
   try {
     collectTopLevelExports(tree.rootNode, source, exports);
-    return { kind: "success", data: exports };
+    return withSyntaxCompleteness({
+      data: exports,
+      file: filePath,
+      root: tree.rootNode,
+      source,
+      grammarId: parseResult.data.grammarId,
+    });
   } finally {
     tree.delete();
   }

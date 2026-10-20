@@ -1,7 +1,10 @@
 // Tree-sitter lifecycle controller — owns one Structural Worker for one cwd.
 
 import { fileURLToPath } from "node:url";
-import type { WorkspaceRuntime } from "@mrclrchtr/supi-code-runtime/api";
+import type {
+  CFamilyFileAssociationResolver,
+  WorkspaceRuntime,
+} from "@mrclrchtr/supi-code-runtime/api";
 import { createTreeSitterProvider } from "../provider/tree-sitter-provider.ts";
 import type { TreeSitterService, TreeSitterSession } from "../types.ts";
 import { createTreeSitterSession } from "./session.ts";
@@ -32,13 +35,20 @@ export class TreeSitterRuntimeController {
   readonly #cwd: string;
   #state: TsControllerState = { kind: "initial" };
   readonly #runtime: WorkspaceRuntime;
+  readonly #fileAssociations?: CFamilyFileAssociationResolver;
   #pendingSession: TreeSitterSession | null = null;
   #generation = 0;
   #transition = Promise.resolve();
 
-  constructor(cwd: string, runtime: WorkspaceRuntime) {
+  /** Create a controller with an optional workspace association snapshot. */
+  constructor(
+    cwd: string,
+    runtime: WorkspaceRuntime,
+    fileAssociations?: CFamilyFileAssociationResolver,
+  ) {
     this.#cwd = cwd;
     this.#runtime = runtime;
+    this.#fileAssociations = fileAssociations;
   }
 
   get cwd(): string {
@@ -79,11 +89,15 @@ export class TreeSitterRuntimeController {
     if (generation !== this.#generation) return supersededStart();
     this.#state = { kind: "unavailable", reason: "Initializing Tree-sitter" };
 
-    const session = createTreeSitterSession(this.#cwd);
+    const session = createTreeSitterSession(this.#cwd, {
+      fileAssociations: this.#fileAssociations?.rules,
+    });
     this.#pendingSession = session;
     try {
       const probe = await session.canParse(fileURLToPath(import.meta.url));
-      if (probe.kind !== "success") throw new Error(probe.message);
+      if (probe.kind !== "success") {
+        throw new Error(probe.kind === "partial" ? probe.reason : probe.message);
+      }
       if (generation !== this.#generation || this.#pendingSession !== session) {
         return supersededStart();
       }

@@ -2,9 +2,15 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  type CFamilyFileAssociationResolver,
+  createCFamilyFileAssociationResolver,
+} from "@mrclrchtr/supi-code-runtime/api";
+import {
+  getSupiConfigPath,
   loadAutomaticExclusionPatterns,
   loadSupiConfig,
   loadSupiConfigForScope,
+  loadSupiConfigSectionForScope,
 } from "@mrclrchtr/supi-core/config";
 import {
   defineConfigSettings,
@@ -47,15 +53,48 @@ export function loadCodeIntelligenceConfig(
 }
 
 /**
+ * Load C-family associations from trusted project configuration only.
+ *
+ * `fileAssociations` is an ordered array of `{ pattern, language }` rules.
+ * Patterns are case-sensitive globs. Use `*`, `?`, `**`, character classes,
+ * and brace alternatives. Patterns
+ * match POSIX-style paths relative to the workspace root. The first match
+ * wins. A rule accepts
+ * only `c` or `cpp` and only changes an existing C-family suffix. Global
+ * values do not apply. An untrusted project returns the default mapping
+ * without reading its configuration. The workspace host keeps this resolver
+ * until its last provider lease ends.
+ *
+ * @throws If a trusted project rule is invalid.
+ */
+export function loadProjectFileAssociations(
+  cwd: string,
+  projectTrusted: boolean,
+): CFamilyFileAssociationResolver {
+  if (!projectTrusted) return createCFamilyFileAssociationResolver(cwd);
+  const section = loadSupiConfigSectionForScope("code-intelligence", cwd, {
+    scope: "project",
+  });
+  if (!section || !Object.hasOwn(section, "fileAssociations")) {
+    return createCFamilyFileAssociationResolver(cwd);
+  }
+  try {
+    return createCFamilyFileAssociationResolver(cwd, section.fileAssociations);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Invalid trusted project configuration in ${getSupiConfigPath("project", cwd)}: ${detail}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
  * Resolve the overview setting for one session boundary.
  *
- * Project-scoped values apply only when the project is trusted (ADR 0002's
- * global/trusted-project scope precedence). Only a strict boolean `true`
- * enables injection; any other value, including malformed non-boolean
- * values, fails closed. Unreadable or invalid config files and non-object
- * sections fall back to defaults through the shared supi-core loader, the
- * same semantics every other SuPi setting uses; fail-closed covers values
- * inside a well-formed section.
+ * Project-scoped values apply only when the project is trusted. Only a strict
+ * boolean `true` enables injection; malformed values fail closed. Unreadable
+ * files and non-object sections use the shared config-loader defaults.
  */
 export function resolveOverviewEnabled(
   cwd: string,

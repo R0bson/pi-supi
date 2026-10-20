@@ -24,7 +24,118 @@ async function outline(file: string, source: string): Promise<OutlineItem[]> {
   }
 }
 
+function flattenOutline(items: readonly OutlineItem[]): OutlineItem[] {
+  return items.flatMap((item) => [item, ...flattenOutline(item.children ?? [])]);
+}
+
 describe("polyglot outline extraction", () => {
+  it("indexes nested named JavaScript declarations without local bindings", async () => {
+    writeFileSync(
+      join(cwd, "nested.tsx"),
+      "function outer() { const local = 1; function inner() { const hidden = 2; } class Local { run() {} } }\n",
+    );
+    const session = createTreeSitterSession(cwd);
+    try {
+      const result = await session.outline("nested.tsx");
+      expect(result.kind).toBe("success");
+      if (result.kind !== "success") return;
+      expect(result.data).toEqual([
+        expect.objectContaining({
+          name: "outer",
+          kind: "function",
+          children: expect.arrayContaining([
+            expect.objectContaining({ name: "inner", kind: "function" }),
+            expect.objectContaining({
+              name: "Local",
+              kind: "class",
+              children: [expect.objectContaining({ name: "run", kind: "method" })],
+            }),
+          ]),
+        }),
+      ]);
+      expect(JSON.stringify(result.data)).not.toContain("hidden");
+      expect(JSON.stringify(result.data)).not.toContain("local");
+    } finally {
+      await session.dispose();
+    }
+  });
+
+  it("indexes nested named declarations across the selected native grammars", async () => {
+    const cases = [
+      {
+        file: "nested.py",
+        source: `def outer():\n    local = 1\n    def inner(): pass\n    class Local:\n        def run(self): pass\n`,
+        parent: "outer",
+        children: ["inner", "Local", "run"],
+      },
+      {
+        file: "Nested.java",
+        source: "class Outer { void method() { int local = 1; class Local { void run() {} } } }",
+        parent: "Outer",
+        children: ["method", "Local", "run"],
+      },
+      {
+        file: "nested.go",
+        source: `package x\nfunc outer() { local := 1; _ = local; type Local struct { Field int } }\n`,
+        parent: "outer",
+        children: ["Local", "Field"],
+      },
+      {
+        file: "nested.rs",
+        source: "fn outer() { let local = 1; fn inner() {} struct Local; }",
+        parent: "outer",
+        children: ["inner", "Local"],
+      },
+      {
+        file: "nested.c",
+        source: "void outer() { int local = 1; struct Local { int field; }; }",
+        parent: "outer",
+        children: ["Local"],
+      },
+      {
+        file: "nested.cpp",
+        source: "void outer() { int local = 1; struct Local { void run() {} }; }",
+        parent: "outer",
+        children: ["Local", "run"],
+      },
+    ] as const;
+    for (const testCase of cases) {
+      const result = await outline(testCase.file, testCase.source);
+      const declaration = result.find((item) => item.name === testCase.parent);
+      expect(declaration, testCase.file).toBeDefined();
+      const names = flattenOutline(declaration?.children ?? []).map((item) => item.name);
+      for (const child of testCase.children) expect(names, testCase.file).toContain(child);
+      expect(names, testCase.file).not.toContain("local");
+    }
+  });
+
+  it("keeps native kinds distinct from common search categories", async () => {
+    const rust = await outline("Native.rs", "trait Speak { fn speak(&self); }");
+    const java = await outline("Native.java", "record Point(int x) {}");
+    const go = await outline("native.go", "package p\ntype Point struct { X int }\n");
+    expect(rust[0]).toMatchObject({ kind: "interface", nativeKind: "trait" });
+    expect(java[0]).toMatchObject({ kind: "record", nativeKind: "record" });
+    expect(go[0]).toMatchObject({ kind: "struct", nativeKind: "struct" });
+  });
+
+  it("returns recovered declarations as partial evidence with file and error ranges", async () => {
+    writeFileSync(join(cwd, "recovered.ts"), "function kept() {}\nconst unfinished = call(\n");
+    const session = createTreeSitterSession(cwd);
+    try {
+      const result = await session.outline("recovered.ts");
+      expect(result.kind).toBe("partial");
+      if (result.kind !== "partial") return;
+      expect(result.file).toBe("recovered.ts");
+      expect(result.data).toEqual([expect.objectContaining({ name: "kept", kind: "function" })]);
+      expect(result.reason).toContain("recovered");
+      expect(result.errorRanges.length).toBeGreaterThan(0);
+      expect(result.errorRanges[0]).toMatchObject({ startLine: 2 });
+      expect((await session.canParse("recovered.ts")).kind).toBe("success");
+    } finally {
+      await session.dispose();
+    }
+  });
+
   it("extracts Python declarations and class methods without local declarations", async () => {
     const items = await outline(
       "sample.py",

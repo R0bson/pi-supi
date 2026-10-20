@@ -9,16 +9,20 @@ const BENCHMARK_OPTIONS = { iterations: 10, time: 500 };
 
 let repeatedSession: TreeSitterSession;
 
+function failureMessage(result: { kind: string; message?: string; reason?: string }): string {
+  return result.reason ?? result.message ?? result.kind;
+}
+
 beforeAll(async () => {
   configureDebugRegistry({ enabled: true, maxEvents: 10_000 });
   repeatedSession = createTreeSitterSession(FIXTURE_DIR);
   const outlineWarmup = await repeatedSession.outline(FIXTURE_FILE);
   if (outlineWarmup.kind !== "success") {
-    throw new Error(`Structural outline warmup failed: ${outlineWarmup.message}`);
+    throw new Error(`Structural outline warmup failed: ${failureMessage(outlineWarmup)}`);
   }
   const queryWarmup = await repeatedSession.callSites(FIXTURE_FILE);
   if (queryWarmup.kind !== "success") {
-    throw new Error(`Structural query warmup failed: ${queryWarmup.message}`);
+    throw new Error(`Structural query warmup failed: ${failureMessage(queryWarmup)}`);
   }
 });
 
@@ -38,7 +42,8 @@ describe("representative structural operation baselines", () => {
     const session = createTreeSitterSession(FIXTURE_DIR);
     try {
       const result = await session.outline(FIXTURE_FILE);
-      if (result.kind !== "success") throw new Error(`Cold outline failed: ${result.message}`);
+      if (result.kind !== "success")
+        throw new Error(`Cold outline failed: ${failureMessage(result)}`);
     } finally {
       await session.dispose();
     }
@@ -46,14 +51,16 @@ describe("representative structural operation baselines", () => {
 
   defineBaseline("repeated parsed tree and outline", async () => {
     const result = await repeatedSession.outline(FIXTURE_FILE);
-    if (result.kind !== "success") throw new Error(`Repeated outline failed: ${result.message}`);
+    if (result.kind !== "success")
+      throw new Error(`Repeated outline failed: ${failureMessage(result)}`);
   });
 
   defineBaseline("cold parser, query compilation, and call sites", async () => {
     const session = createTreeSitterSession(FIXTURE_DIR);
     try {
       const result = await session.callSites(FIXTURE_FILE);
-      if (result.kind !== "success") throw new Error(`Cold call sites failed: ${result.message}`);
+      if (result.kind !== "success")
+        throw new Error(`Cold call sites failed: ${failureMessage(result)}`);
     } finally {
       await session.dispose();
     }
@@ -62,7 +69,7 @@ describe("representative structural operation baselines", () => {
   defineBaseline("repeated parsed tree, compiled query, and call sites", async () => {
     const result = await repeatedSession.callSites(FIXTURE_FILE);
     if (result.kind !== "success") {
-      throw new Error(`Repeated call sites failed: ${result.message}`);
+      throw new Error(`Repeated call sites failed: ${failureMessage(result)}`);
     }
   });
 
@@ -71,6 +78,6 @@ describe("representative structural operation baselines", () => {
     repeatedSession = createTreeSitterSession(FIXTURE_DIR);
     const result = await repeatedSession.outline(FIXTURE_FILE);
     if (result.kind !== "success")
-      throw new Error(`Post-restart outline failed: ${result.message}`);
+      throw new Error(`Post-restart outline failed: ${failureMessage(result)}`);
   });
 });

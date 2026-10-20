@@ -30,6 +30,7 @@ function renderNode(
     return;
   }
   appendPartial(lines, observation);
+  appendSyntaxRecovery(lines, observation.recovery);
   const node = observation.data;
   if (!node) {
     lines.push("_No syntax node at this point._", "");
@@ -60,13 +61,14 @@ function renderEnclosingSymbol(
     return;
   }
   appendPartial(lines, observation);
+  appendSyntaxRecovery(lines, observation.recovery);
   const symbol = observation.data;
   if (!symbol) {
     lines.push("_No provider-reported declaration encloses this point._", "");
     return;
   }
   lines.push(
-    `- \`${symbol.name}\` (${symbol.kind}) L${symbol.startLine}:${symbol.startCharacter}–L${symbol.endLine}:${symbol.endCharacter}`,
+    `- \`${symbol.name}\` (${symbol.nativeKind ?? symbol.kind}) L${symbol.startLine}:${symbol.startCharacter}–L${symbol.endLine}:${symbol.endCharacter}`,
     "",
   );
 }
@@ -123,6 +125,18 @@ function renderDiagnostics(lines: string[], assembly: InspectResultAssembly): vo
     : null;
   if (disclosure) lines.push("", disclosure);
   lines.push("");
+}
+
+function appendSyntaxRecovery(
+  lines: string[],
+  recovery: InspectObservation<unknown>["recovery"],
+): void {
+  if (!recovery) return;
+  const locations = recovery.errorRanges.map(
+    (range) => `L${range.start.line + 1}:${range.start.character + 1}`,
+  );
+  const suffix = locations.length > 0 ? ` Error locations: ${locations.join(", ")}.` : "";
+  lines.push(`_Recovered syntax in \`${recovery.file}\`.${suffix}_`, "");
 }
 
 function appendUnavailable(lines: string[], observation: InspectObservation<unknown>): boolean {

@@ -49,12 +49,12 @@ The package bundles 16 grammars for 38 file extensions. All listed extensions su
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | Yes | Yes | Yes | Yes |
 | TypeScript | `.ts`, `.mts`, `.cts` | Yes | Yes | Yes | Yes |
 | TSX | `.tsx` | Yes | Yes | Yes | Yes |
-| Python | `.py`, `.pyi` | Yes | No | No | Yes |
-| Rust | `.rs` | Yes | No | No | Yes |
-| Go | `.go` | Yes | No | No | Yes |
-| C | `.c`, `.h` | Yes | No | No | Yes |
-| C++ | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | Yes | No | No | Yes |
-| Java | `.java` | Yes | No | No | Yes |
+| Python | `.py`, `.pyi` | Yes | Yes | No | Yes |
+| Rust | `.rs` | Yes | Yes | No | Yes |
+| Go | `.go` | Yes | Yes | No | Yes |
+| C | `.c`, `.h` | Yes | Yes | No | Yes |
+| C++ | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx`, `.c++`, `.h++` | Yes | Yes | No | Yes |
+| Java | `.java` | Yes | Yes | No | Yes |
 | Kotlin | `.kt`, `.kts` | Yes | No | No | Yes |
 | Ruby | `.rb`, `.gemspec` | Yes | No | No | Yes |
 | Bash | `.sh`, `.bash`, `.zsh`, `.ksh` | Yes | No | No | Yes |
@@ -63,7 +63,7 @@ The package bundles 16 grammars for 38 file extensions. All listed extensions su
 | SQL | `.sql` | Yes | No | No | No |
 | LaTeX | `.tex`, `.sty`, `.cls` | Yes | Yes | No | No |
 
-For a bulk scan, use `getStructuralSearchSupportedExtensions(operation)`. It returns operation-specific extensions: 38 for `outline`, 11 for `imports`, 8 for `exports`, and 31 for `call-sites`. It does not accept `callees` or public search-kind names.
+For a bulk scan, use `getStructuralSearchSupportedExtensions(operation)`. It returns operation-specific extensions: 38 for `outline`, 25 for `imports`, 8 for `exports`, and 31 for `call-sites`. It does not accept `callees` or public search-kind names.
 
 ### Mapping to Code Intelligence search
 
@@ -73,20 +73,23 @@ For a bulk scan, use `getStructuralSearchSupportedExtensions(operation)`. It ret
 |---|---|---|
 | `definition` | `outline` | Extracted declaration names |
 | `type`, `interface`, `class`, `method`, `enum` | `outline` | Declaration names filtered by outline kind |
-| `import` | `imports` | Module specifiers or LaTeX dependency paths/names |
+| `import` | `imports` | Written import/source targets, not local aliases or resolved files |
 | `export` | `exports` | Exported names |
 | `call` | `call-sites` | Written call names, not symbol identity |
 
-The `type` filter accepts `class`, `interface`, `type`, `enum`, `struct`, `union`, `record`, `object`, and `concept`. The other kind filters require an exact outline kind. Not every grammar produces every kind. For example, Rust traits use `interface`, Go structs use `struct`, and Java records use `record`; these do not become `class` results.
+The `type` filter accepts `class`, `interface`, `type`, `enum`, `struct`, `union`, `record`, `object`, and `concept`. The other kind filters require an exact common outline kind. Not every grammar produces every kind. Results retain `nativeKind` separately. For example, Rust traits use the common `interface` filter but retain `trait`; Go structs retain `struct`, and Java records retain `record`. These do not become `class` results.
 
 ### Extraction limits
 
-- Outlines are shallow: top-level declarations and supported members, not every local declaration inside function bodies. HTML outlines list only elements with non-empty `id` attributes. SQL outlines list supported `CREATE` declarations and first-level table/type members. LaTeX outlines list section headings and selected command, environment, label, acronym, glossary-entry, and color definitions.
+- TS/JS, Python, Java, Go, Rust, and C/C++ outlines include nested named declarations and members. They are not complete indexes of local variables, parameters, or anonymous expressions. Other languages retain their existing extraction depth. HTML outlines list only elements with non-empty `id` attributes. SQL outlines list supported `CREATE` declarations and first-level table/type members. LaTeX outlines list section headings and selected command, environment, label, acronym, glossary-entry, and color definitions.
 - JavaScript-family imports collect `import` statements, not CommonJS `require()` calls. Exports collect file-level `export` statements, including TypeScript `export =`; they do not collect `module.exports` assignments or nested namespace exports. An eligible `.cjs` file can therefore return no imports or exports.
+- Python imports retain `import`/`from` module targets, including relative prefixes. Java imports retain ordinary/static targets. Go imports retain single/grouped paths. Rust imports retain explicit `use` paths, `extern crate`, and external `mod` names; inline module bodies are not imports. C/C++ imports retain literal quoted and angle-bracket include targets. Grouped paths use explicit syntax only; no files or bindings are resolved. Conditional directives are written evidence, not proof of active dependencies. Dynamic loaders, computed targets, and C++20 module imports remain outside extraction support.
 - LaTeX imports include package, class, source, and bibliography directives. Bibliography directives can refer to `.bib` files, but the grammar does not parse those files.
-- Call-site and callee queries use syntax, not resolved symbol identity. JSX tags are not call expressions. Library callee queries work without LSP, but new `code_graph` targets require semantic readiness in Code Intelligence.
-- `.jsx` uses JavaScript; `.tsx` uses the separate TSX grammar. `.h` uses C, not C++. `.zsh` and `.ksh` use Bash; this is not complete support for those shell dialects.
+- Call-site and callee queries use syntax, not resolved symbol identity. Distinct sites have source ranges; repeated names on one line are not merged. Rust macro invocations are syntax evidence, not expanded calls. JSX tags are not call expressions. Library callee queries work without LSP, but new `code_graph` targets require semantic readiness in Code Intelligence.
+- `.jsx` uses JavaScript; `.tsx` uses the separate TSX grammar. `.h` uses C by default. An explicit session association can select C++ without changing the supported suffix set. `.zsh` and `.ksh` use Bash; this is not complete support for those shell dialects.
 - Go module manifests (`.mod`), Ruby ERB templates (`.erb`), and BibTeX (`.bib`) have [built-in LSP routes](../supi-lsp/README.md#built-in-route-matrix), but no AST grammar. Unlisted extensions, including JSON, YAML, TOML, and CSS, have no grammar. Custom LSP configuration does not add one.
+
+A recovered parse returns `partial` with usable data, a reason, and available syntax-error ranges. Callers must preserve that state instead of interpreting it as complete absence or discarding the data. `canParse()` remains a parseability check, not a claim that syntax or extraction is complete.
 
 Sources: [extension and grammar map](src/language.ts), [operation support](src/operation-support.ts), [call-site queries](src/tool/call-sites.ts), [callee queries](src/tool/callees.ts), and [Code Intelligence kind filters](../supi-code-intelligence/src/analysis/search/pattern-analysis.ts). Regression tests cover [grammar mappings](__tests__/language.test.ts), [operation eligibility](__tests__/operation-support.test.ts), and [call-site queries](__tests__/call-site-languages.test.ts).
 
@@ -126,6 +129,19 @@ const callees = await session.calleesAt("src/index.ts", 42, 10);
 
 await session.dispose();
 ```
+
+For C-family paths, direct library callers can pass ordered rules:
+
+```ts
+const session = createTreeSitterSession("/project", {
+  fileAssociations: [
+    { pattern: "vendor/**/*.h", language: "c" },
+    { pattern: "**/*.h", language: "cpp" },
+  ],
+});
+```
+
+The first match wins; patterns are case-sensitive project-relative globs. Without rules, the extension map stays unchanged. Direct callers own configuration trust. The Code Intelligence workspace host reads trusted project rules and supplies the same snapshot to Tree-sitter and LSP. This library does not read SuPi configuration on its own.
 
 ## Structural performance baseline
 

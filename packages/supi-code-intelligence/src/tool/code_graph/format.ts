@@ -17,6 +17,7 @@ export function formatGraphEvidence(
         : `${totalCount} ${label}`;
   if (externalCount > 0)
     text += `; ${externalCount} external location${externalCount === 1 ? "" : "s"}`;
+  if (metadata.partialMessage) text += ` — ${metadata.partialMessage}`;
   if (invalidLocationCount) {
     const invalidNoun = invalidLocationCount === 1 ? "location" : "locations";
     text += `; ${invalidLocationCount} invalid provider ${invalidNoun} omitted (invalid-provider-location)`;

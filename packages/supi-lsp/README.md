@@ -64,6 +64,14 @@ A configured route is not a ready server. Features depend on the active server, 
 
 The [operation-support model](src/config/operation-support.ts) separates server advertisement from SuPi planning limits. A server can advertise an action that SuPi cannot safely turn into a plan.
 
+### Reference-server acceptance
+
+The [Code Intelligence acceptance suite](../supi-code-intelligence/__tests__/acceptance/language-baseline-harness.ts) exercises public tools against real servers for TypeScript, JavaScript, Python, Java, Go, Rust, C, and C++. Its [pinned Linux/macOS configuration](../../scripts/language-baseline/pins.json) is separate from the built-in route matrix. Qualification remains pending until both pinned CI jobs pass. Missing test prerequisites are failures, not skipped passes.
+
+Pyright remains the default Python server, but the audited server lacks implementation lookup. The acceptance suite uses an explicit `lsp.servers.python.command: "basedpyright-langserver"` override with `args: ["--stdio"]`. This does not change existing user configurations or create a fallback. Basedpyright uses its own settings namespace and diagnostic defaults; see the [configuration example](../supi-code-intelligence/README.md#reference-server-verification).
+
+JDTLS acceptance uses a compatible pinned JDK and isolated writable `-data` and `-configuration` directories. Keep test workspaces separate from personal JDTLS state. The [capability baseline](../../docs/conventions/code-language-baseline.md) defines the operation and evidence requirements.
+
 ### Historical diagnostic audit
 
 The following table describes diagnostic support, not the full semantic feature set. A push server can still provide hover, definitions, references, symbols, and refactors.
@@ -173,6 +181,12 @@ An exact semantic request can still route an excluded file when a compatible ser
 
 Tsconfig and jsconfig filtering applies only to TypeScript and JavaScript-family files (`.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs`). Other-language diagnostics are not filtered by a nearby TypeScript or JavaScript project config. Automatic path exclusions and configured diagnostic suppression still apply. A single-file health result omits the `Tsconfig` coverage line for other languages.
 
+### C-family document languages
+
+The Code Intelligence workspace host can pass ordered, trusted-project [file associations](../supi-code-intelligence/README.md#cc-file-associations). The same snapshot selects the AST grammar and the LSP document language ID. A `.h` file can use `cpp` while retaining the existing `clangd` route. Associations do not change server commands, add suffixes, or establish compiler flags.
+
+Direct library callers can supply a validated `fileAssociations` resolver through `LspRuntimeController` options. Without that option, the existing suffix-based document language IDs remain unchanged. The caller owns configuration trust.
+
 ### Custom server configuration
 
 A custom server needs a command and at least one file type. Advanced server settings are JSON objects. They replace inherited settings as a whole; `initializationOptions` remains a separate initialize value:
@@ -225,6 +239,8 @@ selecting the first action. Rename uses `prepareRename` when the server advertis
 it and otherwise uses direct standard rename. Standard LSP does not provide
 a safe exact extraction-name contract, so `extract_function` and `extract_variable`
 plans report a SuPi planning limitation instead of selecting a generated name.
+
+Rename responses that need additional document state can trigger one bounded discovery/enrollment retry. SuPi validates edit shape and canonical mutation paths, enrolls at most 64 affected files on the same route, and requests fresh edits. The first response is not a plan. Numeric versions must still match. A null version for an open document requires verified synchronized-content evidence; the plan retains the request fingerprint and client version. Missing snapshots, changed inputs, a larger follow-up edit set, and unsafe edits remain unavailable. Planning and apply revalidate these preconditions; no version is discarded to make an edit fit.
 
 Clients, `LspManager`, and the default runtime implementation remain internal.
 

@@ -1,7 +1,11 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { RefactorRequest, SemanticProvider } from "@mrclrchtr/supi-code-runtime/api";
+import type { WorkspaceLspRuntime } from "@mrclrchtr/supi-lsp/api";
+import { createLspSemanticProvider } from "@mrclrchtr/supi-lsp/provider/lsp-semantic-provider";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RefactorOperationInput } from "../../../src/session/refactor-types.ts";
 import {
@@ -90,6 +94,88 @@ describe("runRefactorPlanWorkflow", () => {
       expect.objectContaining({ operation: name, newName: undefined, range: undefined }),
     ]);
   });
+
+  it.each([null, 1])(
+    "rejects changed content before storing a version %s rename plan",
+    async (version) => {
+      const { entry } = registerWorkflowTarget(store, cwd, {
+        file: "src/index.ts",
+        position: { line: 0, character: 0 },
+        displayLine: 1,
+        displayCharacter: 1,
+        name: "oldName",
+        kind: "Function",
+        confidence: "semantic",
+        provenance: ["semantic"],
+        anchorKind: "name",
+        container: null,
+      });
+      let stored = false;
+      const deps: RefactorWorkflowDeps = {
+        cwd,
+        capability: new TestCapabilityAdapter({
+          semantic: createLspSemanticProvider({
+            getOpenDocumentVersion: () => 1,
+            rename: async () => {
+              const file = path.join(cwd, "src", "index.ts");
+              const fingerprint = createHash("sha256").update("oldName();\n").digest("hex");
+              // An external writer changes disk after the request snapshot, without a client sync.
+              writeFileSync(file, "\noldName();\n");
+              return {
+                authorizedMutationRoots: [cwd],
+                documentSnapshots: [
+                  {
+                    file,
+                    version: 1,
+                    contentFingerprint: fingerprint,
+                    diskContentFingerprint: fingerprint,
+                  },
+                ],
+                value: {
+                  documentChanges: [
+                    {
+                      textDocument: { uri: pathToFileURL(file).href, version },
+                      edits: [
+                        {
+                          range: {
+                            start: { line: 0, character: 0 },
+                            end: { line: 0, character: 7 },
+                          },
+                          newText: "newName",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              };
+            },
+          } as unknown as WorkspaceLspRuntime),
+        }),
+        lookupTargetId: (targetId) => getWorkflowTarget(store, targetId),
+        registerTarget: (input) => registerWorkflowTarget(store, cwd, input),
+        storePlan: () => {
+          stored = true;
+          return "plan-id";
+        },
+        getPlan: () => undefined,
+        removePlan: () => undefined,
+      };
+
+      const outcome = await runRefactorPlanWorkflow(
+        {
+          target: { handle: entry.targetId },
+          operation: { rename_symbol: { newName: "newName" } },
+        },
+        deps,
+      );
+
+      expect(outcome).toMatchObject({
+        kind: "unavailable",
+        reason: expect.stringContaining("changed after the semantic input snapshot"),
+      });
+      expect(stored).toBe(false);
+    },
+  );
 
   it("reports a post-target semantic readiness timeout with retry guidance", async () => {
     const { entry } = registerWorkflowTarget(store, cwd, {

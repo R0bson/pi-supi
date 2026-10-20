@@ -66,6 +66,62 @@ describe("LSP refactor transaction enrollment retry", () => {
     ]);
   });
 
+  it("returns exact disk-matched document snapshots from the rename transaction", async () => {
+    const target = createDiagnosticTestFile("target.ts", "const target = true;\n");
+    addTemporaryFiles(target);
+    const { client, rpc } = createRunningTestClient({
+      root: target.tmpDir,
+      cwd: target.tmpDir,
+      capabilities: { renameProvider: true },
+    });
+    client.didOpen(target.filePath, "const target = true;\n");
+    rpc.sendRequest.mockResolvedValueOnce({ changes: {} });
+
+    const outcome = await client.renameDetailedWithSnapshots(
+      target.filePath,
+      { line: 0, character: 6 },
+      "renamed",
+      { snapshotFiles: [target.filePath] },
+    );
+
+    expect(outcome.result).toEqual({ kind: "completed", data: { changes: {} } });
+    expect(outcome.documentSnapshots).toHaveLength(1);
+    expect(outcome.documentSnapshots[0]).toMatchObject({
+      filePath: target.filePath,
+      version: 1,
+    });
+    expect(outcome.documentSnapshots[0]?.contentFingerprint).toBe(
+      outcome.documentSnapshots[0]?.diskContentFingerprint,
+    );
+  });
+
+  it("does not return a verified snapshot when source content changes during rename", async () => {
+    const target = createDiagnosticTestFile("target.ts", "const target = true;\n");
+    addTemporaryFiles(target);
+    const { client, rpc } = createRunningTestClient({
+      root: target.tmpDir,
+      cwd: target.tmpDir,
+      capabilities: { renameProvider: true },
+    });
+    client.didOpen(target.filePath, "const target = true;\n");
+    const response = deferred<unknown>();
+    rpc.sendRequest.mockImplementationOnce(() => response.promise);
+
+    const request = client.renameDetailedWithSnapshots(
+      target.filePath,
+      { line: 0, character: 6 },
+      "renamed",
+      { snapshotFiles: [target.filePath] },
+    );
+    await vi.waitFor(() => expect(rpc.sendRequest).toHaveBeenCalledTimes(1));
+    client.didChange(target.filePath, "const target = false;\n");
+    response.resolve({ changes: {} });
+
+    const outcome = await request;
+    expect(outcome.result.kind).toBe("unavailable");
+    expect(outcome.documentSnapshots).toEqual([]);
+  });
+
   it("does not retry when content changes between preparation and rename", async () => {
     const target = createDiagnosticTestFile("target.ts", "const target = true;\n");
     addTemporaryFiles(target);

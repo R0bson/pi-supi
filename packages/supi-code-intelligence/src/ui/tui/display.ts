@@ -25,7 +25,8 @@ function formatDisplayBounds(section: ToolDisplaySection): string {
     const reason = section.partialReason
       ? `; more may exist — ${section.partialReason}`
       : "; partial";
-    return ` (${section.shownCount}${omitted}${reason})`;
+    const message = section.partialMessage ? `; ${section.partialMessage}` : "";
+    return ` (${section.shownCount}${omitted}${reason}${message})`;
   }
   if (section.omittedCount && section.omittedCount > 0) {
     return ` (${section.shownCount} of ${section.totalCount}; ${section.omittedCount} omitted)`;

@@ -128,6 +128,63 @@ describe("code_orientation evidence sections", () => {
     );
   });
 
+  it("keeps partial structural data and recovery ranges in file orientation", async () => {
+    writeSource("src/widget.ts", "export const widget = 1;\n");
+    registerMockProvider(tmpDir, {
+      outline: async () => ({
+        kind: "partial",
+        file: "src/widget.ts",
+        reason: "Tree-sitter recovered syntax.",
+        errorRanges: [{ start: { line: 0, character: 22 }, end: { line: 0, character: 22 } }],
+        data: [
+          {
+            name: "widget",
+            kind: "variable",
+            startLine: 1,
+            startCharacter: 14,
+            endLine: 1,
+            endCharacter: 24,
+          },
+        ],
+      }),
+    });
+
+    const pi = createPiMock();
+    codeIntelligenceExtension(pi as never);
+    const result = (await getTool(pi, "code_orientation").execute(
+      "provider-file-partial-facts",
+      { focus: { path: "src/widget.ts" } },
+      undefined,
+      undefined,
+      makeCtx({ cwd: tmpDir }),
+    )) as {
+      content: Array<{ text: string }>;
+      details?: {
+        data?: {
+          sections?: Array<{
+            key: string;
+            status: string;
+            errorRanges?: Array<{ start: { line: number; character: number } }>;
+            evidenceLists: Array<{ partialReason: string | null }>;
+          }>;
+        };
+      };
+    };
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("widget");
+    expect(text).toContain("Tree-sitter recovered syntax.");
+    expect(text).toContain("L1:23");
+    expect(result.details?.data?.sections).toContainEqual(
+      expect.objectContaining({
+        key: "structural.outline",
+        status: "partial",
+        errorRanges: [{ start: { line: 0, character: 22 }, end: { line: 0, character: 22 } }],
+        evidenceLists: [expect.objectContaining({ partialReason: "provider-limited" })],
+      }),
+    );
+  });
+
   it("discloses capped precise-target diagnostics in Markdown and structured details", async () => {
     writeSource("src/widget.ts", "export function widget() { return 1; }\n");
     registerMockProvider(tmpDir, {

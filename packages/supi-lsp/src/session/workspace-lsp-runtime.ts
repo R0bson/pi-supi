@@ -56,12 +56,26 @@ export type SemanticReadinessResult =
       processCrashRecovery?: ProcessCrashRecoveryReport;
     };
 
+/** Synchronized content evidence captured by one semantic mutation transaction. */
+export interface RoutedMutationDocumentSnapshot {
+  /** Absolute path of the open document. */
+  readonly file: string;
+  /** Client version for the synchronized buffer. */
+  readonly version: number;
+  /** SHA-256 fingerprint of the text sent to the language server. */
+  readonly contentFingerprint: string;
+  /** SHA-256 fingerprint of the disk text read by the input barrier. */
+  readonly diskContentFingerprint: string;
+}
+
 /** One mutation response and the exact provider roots from its semantic route. */
 export interface RoutedMutationResponse<T> {
   /** Provider response from the routed client. */
   readonly value: T;
   /** Roots that the routed client owns for this mutation response. */
   readonly authorizedMutationRoots: readonly string[];
+  /** Request-scoped input snapshots for the affected documents, when captured. */
+  readonly documentSnapshots?: readonly RoutedMutationDocumentSnapshot[];
   /** Honest reason when the routed server could not provide the operation. */
   readonly reason?: string;
 }

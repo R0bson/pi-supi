@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "src/model.c",
+    "arguments": ["clang", "-Iinclude", "-c", "src/model.c"]
+  },
+  {
+    "directory": ".",
+    "file": "src/main.c",
+    "arguments": ["clang", "-Iinclude", "-c", "src/main.c"]
+  }
+]
