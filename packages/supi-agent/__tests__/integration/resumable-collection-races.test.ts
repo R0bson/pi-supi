@@ -41,6 +41,7 @@ describe("checkpoint collection through registered tools", () => {
 
     const retried = await harness.invoke("agent_result", { batchId });
     expect(retried.usage).toBeUndefined();
+    expect(retried.details.alreadyCollected).toBe(false);
     const checkpointB = checkpointFrom(retried);
     expect(checkpointB).toBeDefined();
     await runFollowUp(conversationId, "C", "C findings.");
@@ -49,6 +50,7 @@ describe("checkpoint collection through registered tools", () => {
 
     const lateCollection = await harness.invoke("agent_result", { batchId });
     expect(lateCollection.usage).toBeUndefined();
+    expect(lateCollection.details.alreadyCollected).toBe(true);
     expect(
       (lateCollection.details as { tasks: Array<{ checkpoint?: unknown }> }).tasks[0]?.checkpoint,
     ).toBeUndefined();
@@ -69,6 +71,7 @@ describe("checkpoint collection through registered tools", () => {
     expect(unstored.usage?.totalTokens).toBe(15);
     expect(checkpointFrom(unstored)).toBeDefined();
     expect(stripped.usage).toBeUndefined();
+    expect(stripped.details.alreadyCollected).toBe(false);
     expect(stripped.details).toMatchObject({
       batchId,
       tasks: [expect.objectContaining({ taskId: "B", conversationId })],

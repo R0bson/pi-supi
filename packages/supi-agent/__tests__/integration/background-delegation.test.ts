@@ -1,4 +1,6 @@
+import { getTool } from "@mrclrchtr/supi-test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { type RegisteredAgentRunTool, render, theme } from "../helpers/agent-run-fixtures.ts";
 import { backgroundHarness, task } from "../helpers/background-harness.ts";
 
 const sdk = vi.hoisted(() => ({ createAgentSession: vi.fn(), createAgentSessionRuntime: vi.fn() }));
@@ -30,13 +32,38 @@ describe("background delegation through registered tools", () => {
       pending: [expect.objectContaining({ taskId: "slow" })],
     });
     expect(first.usage?.totalTokens).toBe(15);
+    expect(JSON.stringify(first.content)).not.toContain("Already collected");
     const repeated = await harness.invoke("agent_result", { batchId });
     expect(repeated.usage).toBeUndefined();
-    expect(repeated.content).toEqual(first.content);
+    expect(JSON.stringify(repeated.content)).toContain("Already collected; no new Usage.");
+    expect(JSON.stringify(repeated.content)).toContain("Fast result");
+    expect(JSON.stringify(repeated.content)).toContain("Pending: slow");
     harness.child("slow").finish("Slow result");
     const final = await harness.invoke("agent_result", { batchId, wait: true });
     expect(final.details).toMatchObject({ complete: true });
     expect(final.usage?.totalTokens).toBe(15);
+    expect(JSON.stringify(final.content)).not.toContain("Already collected");
+    const reread = await harness.invoke("agent_result", { batchId });
+    expect(JSON.stringify(reread.content)).toContain("Already collected; no new Usage.");
+    expect(JSON.stringify(reread.content)).toContain("Batch complete.");
+    expect(reread.usage).toBeUndefined();
+    const tool = getTool(harness.pi, "agent_result") as unknown as Pick<
+      RegisteredAgentRunTool,
+      "renderResult"
+    >;
+    for (const expanded of [false, true]) {
+      expect(render(tool.renderResult(reread, { expanded, isPartial: false }, theme))).toContain(
+        "Already collected; no new Usage.",
+      );
+    }
+  });
+
+  it("does not label an empty pending collection as already collected", async () => {
+    harness = await backgroundHarness(sdk);
+    const start = await harness.invoke("agent_run", { tasks: [task()] });
+    const result = await harness.invoke("agent_result", { batchId: start.details.batchId });
+    expect(result.details).toMatchObject({ complete: false, tasks: [], alreadyCollected: false });
+    expect(JSON.stringify(result.content)).not.toContain("Already collected");
   });
   it("returns a handle before a child finishes and collects its result later", async () => {
     harness = await backgroundHarness(sdk);

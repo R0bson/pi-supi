@@ -4,6 +4,7 @@ import { Value } from "typebox/value";
 import type { DelegationController } from "../../delegation/controller.ts";
 import { agentProfileCatalogueStore } from "../../session.ts";
 import type { BatchProgressState } from "./batch-types.ts";
+import { prepareAgentRunArguments } from "./input.ts";
 import { buildAgentRunResult, buildBackgroundStartResult } from "./result.ts";
 import type { AgentRunToolParams } from "./schema.ts";
 
@@ -23,6 +24,7 @@ export function makeAgentRunExecute(
     if (catalogue.profileIds.length === 0) {
       throw new Error("No valid Agent Profiles are available.");
     }
+    prepareAgentRunArguments(params);
     if (!Value.Check(parameters, params)) {
       throw new Error("Invalid agent_run input.");
     }

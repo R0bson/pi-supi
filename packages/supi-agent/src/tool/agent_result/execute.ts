@@ -26,7 +26,11 @@ export function makeAgentResultExecute(
     if ((signal ?? ctx.signal)?.aborted) throw new Error("Delegation collection canceled.");
     controller.get(params.batchId, ctx);
     const checkpointTasks = controller.prepareCheckpointTasks(callId, batch, ctx);
-    const result = buildCollectedResult(batch.handle, checkpointTasks);
+    const result = buildCollectedResult(
+      batch.handle,
+      checkpointTasks,
+      controller.isCollected(batch, ctx),
+    );
     if (typeof result.details.fullOutputPath === "string")
       controller.retainOutput(result.details.fullOutputPath);
     const receipt = controller.receipts.prepare(

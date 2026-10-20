@@ -3,10 +3,11 @@ import type { BatchTaskResult, DelegationBatchHandle } from "../agent_run/batch-
 import { buildAgentRunResult } from "../agent_run/result.ts";
 import { AGENT_COMPLETION_MESSAGE_TYPE } from "../names.ts";
 
-/** Build a bounded snapshot with terminal results and pending status. */
+/** Build a bounded snapshot. The collected flag applies to available results, not pending tasks. */
 export function buildCollectedResult(
   handle: DelegationBatchHandle,
   results?: readonly BatchTaskResult[],
+  alreadyCollected = false,
 ): AgentToolResult<Record<string, unknown>> {
   const snapshot = handle.snapshot();
   const outcome = results ? { ...snapshot, results: [...results] } : snapshot;
@@ -16,13 +17,15 @@ export function buildCollectedResult(
   const status = pending.length
     ? `Pending: ${pending.map((task) => `${task.taskId} (${task.status})`).join(", ")}. Wait for a completion notice or use wait: true; do not poll.`
     : "Batch complete.";
-  const result = buildAgentRunResult(outcome, undefined, status);
+  const introduction = alreadyCollected ? `Already collected; no new Usage.\n${status}` : status;
+  const result = buildAgentRunResult(outcome, undefined, introduction);
   return {
     ...result,
     details: {
       ...result.details,
       batchId: handle.batchId,
       complete: pending.length === 0,
+      alreadyCollected,
       pending,
     },
   };

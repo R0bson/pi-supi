@@ -174,6 +174,18 @@ export class DelegationController {
     );
   }
 
+  /** Confirm stored results, checkpoints, and Usage before labeling a repeated collection. */
+  isCollected(batch: ManagedBatch, ctx: ExtensionContext): boolean {
+    return (
+      this.#conversationState.isCollected(batch, ctx.sessionManager.getBranch()) &&
+      batch.handle
+        .snapshot()
+        .results.every(
+          (task) => !task.usage || this.receipts.reported(batch.handle.batchId, task.taskId),
+        )
+    );
+  }
+
   /** Return live status for saved conversations on the active parent branch. */
   conversationActivity(
     ctx: ExtensionContext,

@@ -48,6 +48,15 @@ export class DelegationConversationState {
     });
   }
 
+  /** Whether every available result and its checkpoint are stored on this branch. */
+  isCollected(batch: ManagedBatch, branch: readonly SessionEntry[]): boolean {
+    const results = batch.handle.snapshot().results;
+    return (
+      results.length > 0 &&
+      results.every((task) => !hasPendingCollection(batch, task.taskId, branch))
+    );
+  }
+
   /** Report busy and pending-collection runs without exposing child output. */
   activity(
     batches: Iterable<ManagedBatch>,

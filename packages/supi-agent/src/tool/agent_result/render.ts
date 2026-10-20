@@ -21,6 +21,7 @@ export function renderResult(
   const details = result.details as
     | (AgentRunResultDetails & {
         complete?: boolean;
+        alreadyCollected?: boolean;
         pending?: { taskId: string; status: string }[];
       })
     | undefined;
@@ -29,6 +30,7 @@ export function renderResult(
   const lines = [
     theme.fg("accent", `Agent results · ${tasks.length} ready · ${pending.length} pending`),
   ];
+  if (details?.alreadyCollected) lines.push(theme.fg("dim", "Already collected; no new Usage."));
   if (options.expanded) {
     for (const task of tasks) lines.push(...renderTaskLines(task, theme));
     for (const task of pending) lines.push(theme.fg("dim", `${task.taskId} · ${task.status}`));

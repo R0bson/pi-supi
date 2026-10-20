@@ -46,6 +46,7 @@ Keep `tasks` and `sharedContext`. Add optional `mode: "background" | "foreground
 - Background returns a session-local batch handle, task identifiers, and initial status.
 - The background start result does not report child Usage.
 - Each task uses exactly one selector: `new: { profile }` or `continue: { conversationId }`. A follow-up keeps the saved Profile ID and uses current profile policy.
+- Reject both or neither selector with `Choose exactly one of new or continue.` Identify the task by its array index. Keep the schema constraints and Pi's optional-null handling unchanged.
 - A started run returns its conversation reference in progress and result output. Use `agent_list` to find saved references on the active branch.
 
 ### Saved conversations
@@ -66,6 +67,7 @@ agent_result({ batchId, wait: true })
 - With `wait: true`, wait until every task in the batch has a terminal outcome.
 - Keep task order equal to input order.
 - Result reads are repeatable. Collection does not delete results.
+- Show `Already collected; no new Usage.` when all available results, their checkpoints, and their Usage are already stored. Keep pending status visible when siblings remain active. Do not show this notice for empty results, unstored concurrent collections, or retries that must store missing checkpoint data or Usage.
 - Return bounded task output, failure information, and a clear complete or pending state.
 - Reuse aggregate output limits and spill behavior. Keep full transcripts out of model-facing results.
 - Only this tool reports Usage for background tasks, under the accounting rules below.

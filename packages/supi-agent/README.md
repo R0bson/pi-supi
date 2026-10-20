@@ -25,7 +25,7 @@ Changes to **Agent Run tool**, **Active Agent Run limit**, and each profile's **
 
 In TUI and RPC, `agent_run` defaults to background execution for read-only profiles such as `explore`. It returns a batch handle so the parent can continue independent work. Use `mode: "foreground"` to wait in the starting call. Mutation-capable profiles such as `general` default to foreground and reject explicit background requests. Print and JSON modes also default to foreground and reject explicit background requests.
 
-- `agent_result({ batchId })` returns completed task results and pending status. Results are repeatable. Do not poll.
+- `agent_result({ batchId })` returns completed task results and pending status. Results are repeatable. When all available results, checkpoints, and Usage are already stored, it shows `Already collected; no new Usage.` Pending tasks can still remain. Do not poll.
 - `agent_result({ batchId, wait: true })` waits for all tasks to finish.
 - `agent_cancel({ batchId })` requests a stop for the active tasks in one background batch. Collect its terminal results afterward.
 - Each task can produce a completion notice before its siblings finish. The notice reaches a busy parent at the next safe turn boundary, or starts a turn when the parent is idle. It contains identifiers and status, not task output. Notices for successfully collected tasks are omitted from later model requests; the human transcript is unchanged.

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { backgroundHarness, task } from "../helpers/background-harness.ts";
+import { backgroundHarness, task, usage } from "../helpers/background-harness.ts";
 
 const sdk = vi.hoisted(() => ({ createAgentSession: vi.fn(), createAgentSessionRuntime: vi.fn() }));
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
@@ -75,6 +75,7 @@ describe("background collection receipts", () => {
       harness.invoke("agent_result", { batchId: start.details.batchId, wait: true }),
     ]);
     expect(results.reduce((sum, result) => sum + (result.usage?.totalTokens ?? 0), 0)).toBe(15);
+    for (const result of results) expect(result.details.alreadyCollected).toBe(false);
     const repeated = await harness.invoke("agent_result", { batchId: start.details.batchId });
     expect(repeated.usage).toBeUndefined();
   });
@@ -92,6 +93,37 @@ describe("background collection receipts", () => {
       tasks: [expect.objectContaining({ status: "failed" })],
     });
     expect(JSON.stringify(failed.content)).not.toContain("Private setup failure");
+    expect(failed.usage).toBeUndefined();
+    expect(failed.details.alreadyCollected).toBe(false);
+    const repeated = await harness.invoke("agent_result", { batchId: start.details.batchId });
+    expect(repeated.details.alreadyCollected).toBe(true);
+    expect(JSON.stringify(repeated.content)).toContain("Already collected; no new Usage.");
+  });
+
+  it("does not label a Usage retry as already collected after a result hook replaces Usage", async () => {
+    harness = await backgroundHarness(sdk);
+    const start = await harness.invoke("agent_run", { tasks: [task()] });
+    await vi.waitFor(() => expect(harness?.children[0]?.session.isStreaming).toBe(true));
+    harness.child("one").finish();
+    await harness.invoke(
+      "agent_result",
+      { batchId: start.details.batchId, wait: true },
+      {
+        resultHook: () => ({
+          usage: {
+            ...usage,
+            input: 0,
+            output: 0,
+            totalTokens: 0,
+            cost: { ...usage.cost, input: 0, output: 0, total: 0 },
+          },
+        }),
+      },
+    );
+    const retry = await harness.invoke("agent_result", { batchId: start.details.batchId });
+    expect(retry.usage?.totalTokens).toBe(15);
+    expect(retry.details.alreadyCollected).toBe(false);
+    expect(JSON.stringify(retry.content)).not.toContain("Already collected");
   });
 
   it("bounds the complete collection, including pending status, within the output budget", async () => {
