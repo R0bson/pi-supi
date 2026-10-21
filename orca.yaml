@@ -1,0 +1,4 @@
+scripts:
+  setup: ./scripts/worktree-setup.sh
+  archive: ./scripts/worktree-archive.sh
+setupAgentStartupPolicy: wait-for-setup

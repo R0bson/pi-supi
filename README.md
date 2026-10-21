@@ -214,6 +214,10 @@ Share the result, or any friction you find in SuPi tools, prompts, skills, or in
 
 If SuPi is useful to you, consider giving it a [star](https://github.com/mrclrchtr/supi/stargazers) as well.
 
+## Development
+
+For isolated checkouts, dependency preparation, and cleanup, see [Worktree development](docs/conventions/worktrees.md). Run `pnpm verify:ai` for the full workspace verification.
+
 ## License
 
 [MIT](LICENSE)

@@ -21,6 +21,7 @@ Reference material for agents that develop PI extensions in this repo. Docs here
 
 | Doc | Answers | Read when |
 | --- | --- | --- |
+| [Worktree development](conventions/worktrees.md) | Portable setup/archive, dependency readiness, data retention, native Orca hook selection, and proof boundaries | You prepare, diagnose, or remove a development worktree |
 | `conventions/package-layout.md` | Package directory structure, boundary files (`api.ts` / `index.ts` / `extension.ts`), test layout, per-package target matrix | You create a package or do structural work on one |
 | [Installer design](conventions/installer.md) | Approved npx CLI design: two-scope Installation Matrix, presets, trust, source limits, failures, and verification requirements | You implement or change the SuPi installer |
 | `conventions/tool-architecture.md` | Internal architecture for tool packages: per-tool directory layout, spec/guidance modules, workflow, result assembly, presentation adapters, PI adapter, context-channel ownership | You add or restructure a package that registers tools |
