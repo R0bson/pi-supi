@@ -36,6 +36,15 @@ export function formatTitle(sessionName?: string, cwd?: string): string {
   return "π";
 }
 
+/**
+ * Whether SuPi may write terminal titles in this process.
+ * Orca-managed panes have their own lifecycle-aware title writer, including
+ * the needs-input marker; competing writes can hide that state.
+ */
+export function canManageTerminalTitle(): boolean {
+  return !process.env.ORCA_PANE_KEY;
+}
+
 /** Sound the audible terminal bell (ASCII BEL). */
 export function signalBell(): void {
   process.stdout.write("\x07");

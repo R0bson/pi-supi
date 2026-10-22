@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TitleTarget } from "../../src/terminal.ts";
 import {
+  canManageTerminalTitle,
   DONE_SYMBOL,
   formatTitle,
   signalBell,
@@ -22,6 +23,12 @@ function makeCtx(): TitleTarget & { getTitles(): string[] } {
 }
 
 describe("terminal utilities", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, "", "pane-key"])("resolves title ownership for ORCA_PANE_KEY=%s", (pane) => {
+    vi.stubEnv("ORCA_PANE_KEY", pane);
+    expect(canManageTerminalTitle()).toBe(!pane);
+  });
   describe("formatTitle", () => {
     it.concurrent("formats with session name and cwd", () => {
       expect(formatTitle("my-session", "/home/projects/foo")).toBe("π - my-session - foo");

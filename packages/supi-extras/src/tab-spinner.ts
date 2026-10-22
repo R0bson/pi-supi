@@ -12,7 +12,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createSessionNameTracker } from "@mrclrchtr/supi-core/session";
 import { BRAILLE_SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "@mrclrchtr/supi-core/spinner-frames";
-import { formatTitle, signalDone } from "@mrclrchtr/supi-core/terminal";
+import {
+  canManageTerminalTitle,
+  formatTitle,
+  signalDone,
+  WAITING_SYMBOL,
+} from "@mrclrchtr/supi-core/terminal";
 
 const AGENT_END_SETTLE_MS = 200;
 
@@ -30,6 +35,7 @@ type ReviewTitleState =
 
 // biome-ignore lint/complexity/noExcessiveLinesPerFunction: spinner state and event wiring are intentionally colocated
 export default function tabSpinner(pi: ExtensionAPI) {
+  if (!canManageTerminalTitle()) return;
   const getSessionName = createSessionNameTracker(pi);
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -39,6 +45,10 @@ export default function tabSpinner(pi: ExtensionAPI) {
   let hasActiveAgent = false;
   let pendingAgentEnd = false;
   let askUserActive = 0;
+  let uiPromptActive = false;
+
+  // Native prompts include reusable forms and dialogs outside the ask_user tool.
+  const waitingForInput = () => uiPromptActive || askUserActive > 0;
   let reviewTitleState: ReviewTitleState = { kind: "none" };
   let currentCtx: ExtensionContext | undefined;
   let cachedCwd: string | undefined;
@@ -51,7 +61,7 @@ export default function tabSpinner(pi: ExtensionAPI) {
 
   /** Set the terminal title to the review-phase icon if one is active. */
   function applyReviewTitle(): boolean {
-    if (timer) return false; // spinner is active, don't override
+    if (timer || waitingForInput()) return false;
 
     const baseTitle = title();
     const icon = reviewTitleIcon();
@@ -122,8 +132,8 @@ export default function tabSpinner(pi: ExtensionAPI) {
     }
   }
 
-  function safelySetTitle(nextTitle: string) {
-    if (!currentCtx) return;
+  function safelySetTitle(nextTitle: string, promptTitle = false) {
+    if (!currentCtx || (waitingForInput() && !promptTitle)) return;
     try {
       currentCtx.ui.setTitle(nextTitle);
     } catch {
@@ -145,7 +155,7 @@ export default function tabSpinner(pi: ExtensionAPI) {
     clearPendingAgentEnd();
     clearSpinnerTimer();
     frame = 0;
-    if (!currentCtx) return;
+    if (!currentCtx || waitingForInput()) return;
     if (applyReviewTitle()) return;
     try {
       signalDone(currentCtx, title());
@@ -156,7 +166,7 @@ export default function tabSpinner(pi: ExtensionAPI) {
 
   /** Start the spinner interval. Overwrites any ✓ shown. */
   function start() {
-    if (timer || !currentCtx) return;
+    if (timer || !currentCtx || waitingForInput()) return;
     timer = setInterval(() => {
       const icon = BRAILLE_SPINNER_FRAMES[frame % BRAILLE_SPINNER_FRAMES.length];
       const baseTitle = title();
@@ -214,7 +224,30 @@ export default function tabSpinner(pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event, ctx) => {
+    clearPendingAgentEnd();
+    clearSpinnerTimer();
+    frame = 0;
+    activeCount = 0;
+    hasActiveAgent = false;
+    askUserActive = 0;
+    uiPromptActive = false;
+    clearReviewTitle();
     rememberContext(ctx);
+  });
+
+  pi.on("ui_prompt_start", async (_event, ctx) => {
+    rememberContext(ctx);
+    uiPromptActive = true;
+    clearSpinnerTimer();
+    safelySetTitle(`${WAITING_SYMBOL} ${title()}`, true);
+  });
+
+  pi.on("ui_prompt_end", async (_event, ctx) => {
+    if (!uiPromptActive) return;
+    uiPromptActive = false;
+    rememberContext(ctx);
+    if (activeCount > 0) start();
+    else stop();
   });
 
   pi.on("agent_start", async (_event, ctx) => {
@@ -244,6 +277,9 @@ export default function tabSpinner(pi: ExtensionAPI) {
     unregisterEvents();
     clearReviewTitle();
     activeCount = 0;
+    hasActiveAgent = false;
+    askUserActive = 0;
+    uiPromptActive = false;
     rememberContext(ctx);
     stop();
     currentCtx = undefined;
@@ -266,7 +302,10 @@ export default function tabSpinner(pi: ExtensionAPI) {
   unregisterBusHandlers.push(
     pi.events.on("supi:ask-user:end", () => {
       askUserActive = Math.max(0, askUserActive - 1);
-      if (askUserActive === 0 && activeCount > 0) start();
+      // Ask User may close inside an outer native prompt. Its cleanup restores
+      // a base title first; keep the outer prompt visible instead of resuming.
+      if (uiPromptActive) safelySetTitle(`${WAITING_SYMBOL} ${title()}`, true);
+      else if (askUserActive === 0 && activeCount > 0) start();
     }),
   );
 

@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createPiMock, getTool, getTools, makeCtx } from "@mrclrchtr/supi-test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // We import the extension factory but we also export executeAskUser for direct testing
 import askUserExtension from "../../src/ask-user.ts";
 import type { AskUserInteractionResult } from "../../src/types.ts";
@@ -73,6 +73,8 @@ function makeFormCtx(result: unknown): FormCtx {
 }
 
 describe("ask_user tool", () => {
+  beforeEach(() => vi.stubEnv("ORCA_PANE_KEY", ""));
+  afterEach(() => vi.unstubAllEnvs());
   /** Fire session_start like a real pi session so prompting-surface config
    *  resolution and mode-gated registration run. */
   async function fireSessionStart(

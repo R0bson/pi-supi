@@ -51,6 +51,7 @@
     }
   },
   "devDependencies": {
+    "@mrclrchtr/supi-ask-user": "workspace:*",
     "vitest": "5.0.5",
     "@mrclrchtr/supi-test-utils": "workspace:*"
   },

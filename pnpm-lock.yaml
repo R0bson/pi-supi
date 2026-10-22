@@ -552,6 +552,9 @@ importers:
         specifier: ^5.3.1
         version: 5.3.2
     devDependencies:
+      '@mrclrchtr/supi-ask-user':
+        specifier: workspace:*
+        version: link:../supi-ask-user
       '@mrclrchtr/supi-test-utils':
         specifier: workspace:*
         version: link:../supi-test-utils

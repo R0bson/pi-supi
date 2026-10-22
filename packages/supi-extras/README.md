@@ -96,7 +96,9 @@ If the stash file cannot be read or written, drafts are kept in memory only and 
 
 ### Tab-title spinner
 
-While the agent is working, the package animates a spinner in the terminal tab title. When the turn finishes, it shows a done marker. The spinner pauses while a question waits for your answer.
+While the agent is working, the package animates a spinner in the terminal tab title. When the turn finishes, it shows a done marker. Native Pi prompts (including custom forms) pause the spinner and show a waiting marker until they close. Background-work and review updates do not overwrite an open prompt.
+
+In Orca-managed panes (`ORCA_PANE_KEY` is set), SuPi does not register its title spinner. Orca owns the title and needs-input marker through Pi's native `ui_prompt_start` / `ui_prompt_end` lifecycle. No synthetic agent completion is emitted when a form opens.
 
 ### Footer replacement
 

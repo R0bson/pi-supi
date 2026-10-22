@@ -1,5 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { formatTitle, signalWaiting } from "@mrclrchtr/supi-core/terminal";
+import {
+  canManageTerminalTitle,
+  formatTitle,
+  signalBell,
+  signalWaiting,
+} from "@mrclrchtr/supi-core/terminal";
 import { openAskUserForm } from "../../form-api.ts";
 import { AskUserValidationError, normalizeQuestionnaire } from "../../normalize.ts";
 import type { AskUserParams } from "../../schema.ts";
@@ -63,8 +68,10 @@ export async function executeAskUser(
     },
     onRelease: () => {
       ctx.ui.setWorkingVisible?.(true);
-      pi.events.emit("supi:ask-user:end", { source: "supi-ask-user" });
+      // Restore before notifying title owners, so an outer native prompt can
+      // reassert its waiting marker after this form's temporary title is gone.
       restoreTerminalTitle(ctx, sessionName);
+      pi.events.emit("supi:ask-user:end", { source: "supi-ask-user" });
     },
   });
 
@@ -92,9 +99,12 @@ function isInternalInteractionResult(
 }
 
 function signalAttention(ctx: AskUserExecutionContext): void {
-  signalWaiting(ctx, "pi — waiting for your input");
+  // Pi's native custom-UI lifecycle tells Orca to hold its needs-input marker.
+  // Keep the bell, but never overwrite that marker with SuPi's title format.
+  if (canManageTerminalTitle()) signalWaiting(ctx, "pi — waiting for your input");
+  else signalBell();
 }
 
 function restoreTerminalTitle(ctx: AskUserExecutionContext, sessionName: string | undefined): void {
-  ctx.ui.setTitle?.(formatTitle(sessionName, ctx.cwd));
+  if (canManageTerminalTitle()) ctx.ui.setTitle?.(formatTitle(sessionName, ctx.cwd));
 }
