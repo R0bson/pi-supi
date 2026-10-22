@@ -148,6 +148,24 @@ export class AskUserController {
     state.markedUnanswered = false;
   }
 
+  /** Replace a choice answer explicitly, preserving question and option comments. */
+  setChoiceAnswer(questionId: string, values: readonly string[]): void {
+    if (this.terminal) return;
+    const question = this.questionnaire.questions.find((item) => item.id === questionId);
+    if (question?.type !== "choice") return;
+    if (
+      (!question.multi && values.length !== 1) ||
+      new Set(values).size !== values.length ||
+      values.some((value) => !question.options.some((option) => option.value === value))
+    ) {
+      throw new Error("Invalid choice answer.");
+    }
+    const state = this.stateFor(questionId);
+    if (state.kind !== "choice") return;
+    for (const option of state.options) option.selected = values.includes(option.value);
+    state.markedUnanswered = false;
+  }
+
   // ── Multi-select operations ─────────────────────────────────────
 
   toggleChoiceOption(question: NormalizedChoiceQuestion, optionIndex: number): void {

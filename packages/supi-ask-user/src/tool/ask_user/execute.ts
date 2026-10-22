@@ -5,6 +5,7 @@ import {
   signalBell,
   signalWaiting,
 } from "@mrclrchtr/supi-core/terminal";
+import type { AdvisorRunner } from "../../advisor/types.ts";
 import { openAskUserForm } from "../../form-api.ts";
 import { AskUserValidationError, normalizeQuestionnaire } from "../../normalize.ts";
 import type { AskUserParams } from "../../schema.ts";
@@ -35,6 +36,7 @@ export async function executeAskUser(
   ctx: AskUserExecutionContext,
   pi: ExtensionAPI,
   sessionName?: string,
+  advisor?: AdvisorRunner,
 ): Promise<AskUserToolResult> {
   let questionnaire: NormalizedQuestionnaire;
   try {
@@ -60,6 +62,7 @@ export async function executeAskUser(
   const outcome = await openAskUserForm(questionnaire, {
     ui: ctx.ui,
     signal,
+    advisor,
     onToggleToolsExpanded,
     onAcquire: () => {
       signalAttention(ctx);

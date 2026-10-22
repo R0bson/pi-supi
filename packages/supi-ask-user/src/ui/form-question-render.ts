@@ -109,6 +109,19 @@ function renderChoiceOptionLines(
     width,
   });
 
+  const advice =
+    args.advisor?.status === "ready"
+      ? args.advisor.report?.recommendations.find((item) => item.questionId === question.id)
+      : undefined;
+  if (advice?.kind === "choice" && advice.values.includes(opt.value)) {
+    pushWrappedWithPrefix({
+      lines,
+      prefix: "       ",
+      text: args.theme.fg("accent", "[advisor]"),
+      width,
+    });
+  }
+
   if (opt.description) {
     pushWrappedWithPrefix({
       lines,

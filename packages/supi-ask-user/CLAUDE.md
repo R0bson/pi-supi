@@ -31,6 +31,16 @@ Entrypoint: `src/ask-user.ts`
 7. **Tool guidance** — `src/tool/guidance.ts` (model-facing description, canonical name/label, single source of truth)
 8. **Transcript** — `src/render/transcript.ts` (human display only, never sent to the model)
 
+## Advisor
+
+- The registered tool opts into `createAdvisorRunner(ctx)`; `openAskUserForm()` callers opt in explicitly through `advisor`.
+- `src/advisor/` owns fixed-profile settings, full uncompacted branch text (honoring explicit context edits), dedicated read-only tools, model-loop budgets and final JSON validation. Never replace original history with summaries or silently cap it; model-capacity errors remain visible. Use `supi-core/llm` so Pi retains provider authority.
+- All recommendations arrive in one final message. Never add tools for publishing individual recommendations.
+- No feature-level timeout, fallback model, automatic retry, or implicit answer/comment mutations. Default inspection budgets are six tool turns and twenty calls.
+- `src/session/advisor.ts` owns ephemeral advice and generation-checked cancellation separately from the user-answer controller. Finish/dispose must abort work and clear the repaint timer.
+- Alt+A explicitly applies advice; an outside alternative opens an appended comment draft, never a new option. Alt+I expands details; Alt+R snapshots current answers and refreshes. Comment editors retain their own key handling.
+- Advice is not persisted or included in the main-agent result; only explicit answer/comment adoption enters the existing result contract.
+
 ## Package surfaces
 
 - `@mrclrchtr/supi-ask-user/extension` — pi extension entrypoint

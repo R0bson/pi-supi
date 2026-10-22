@@ -15,6 +15,7 @@ Adds `ask_user`, a structured decision-form tool for the [Pi coding agent](https
 - **One focused form** — one blocking form contains 1-10 related questions, with separate questions for independently answerable choices.
 - **Choice and text questions** — choose one option, choose multiple options, or enter free-form text.
 - **Recommendations** — the agent can select or prefill a suggested answer. You can change it.
+- **Independent advisor** — a separately configured model reviews the session and form asynchronously, can inspect local project text, and returns all suggestions together. It never changes answers automatically.
 - **Option context** — focused options can show descriptions, trade-offs, consequences, or code samples.
 - **Comments at each level** — add a form comment, a question comment, or a comment on a selected or unselected option.
 - **Review before submission** — inspect each answer, edit a question, and see unanswered items.
@@ -125,6 +126,9 @@ The form shows context-specific key hints at the bottom.
 | `n` | Comment on the focused choice option |
 | `u` / `Alt+U` | Mark the question unanswered (`Alt+U` for text questions) |
 | `Esc` | Cancel the form; in a comment editor, discard unsaved comment text |
+| `Alt+A` | Apply advice to the current question without advancing; for an outside option, open an editable question-comment draft |
+| `Alt+I` | Expand/collapse advisor details (outside comment editors) |
+| `Alt+R` | Refresh/retry advice using current answers and comments (outside comment editors) |
 
 On wide terminals, option details appear beside the choices. On narrow terminals, they appear below the choices. Ask User uses up to 85% of the terminal height, capped at 36 rows. If a form is taller than its inline height limit, Ask User keeps the focused row visible and shows a scroll position indicator.
 
@@ -137,7 +141,7 @@ Orca's Pi status and title hooks must support `ui_prompt_start` / `ui_prompt_end
 ## Requirements, defaults, and limits
 
 - `ask_user` requires Pi's interactive TUI and custom component support. The tool is only registered in TUI sessions and is not offered to the model in RPC, JSON, or print mode.
-- The package needs no additional binary, service, or API key.
+- The form itself needs no additional binary, service, or API key. The independent advisor uses the configured Pi provider and requires access to that model; failure does not block the form.
 - Only one form can be active. The tool uses sequential execution, so sibling tool calls do not run beside a live form.
 - Cancelling a form cancels the current agent turn. It does not record a user response.
 - All questions are expected for a complete submission. Mark a question unanswered to request discussion.
@@ -146,6 +150,45 @@ Orca's Pi status and title hooks must support `ui_prompt_start` / `ui_prompt_end
 - Titles can contain 120 characters. Headers can contain 60 characters. Intros and prompts can contain 4,000 characters. Text placeholders can contain 200 characters.
 - Ask User reuses a compatible Pi custom editor for text and comments. It uses the default editor if the custom editor is not compatible.
 - The model-visible result is limited to Pi's default 2,000 lines or 50 KB. The structured result remains available in the session transcript.
+
+## Independent advisor
+
+The `ask_user` tool starts one independent analysis when its form opens. The form remains usable while a spinner and elapsed time show that the advisor is working. All validated suggestions appear together after one final response—there is no per-question publishing tool or live reasoning display.
+
+The advisor favors the smallest sufficient reversible step rather than unnecessary caution. It can disagree with the author's `[recommended]` option, suggest one or several existing choices, draft a text answer, or propose an alternative outside the available options. Each question has its own rationale and optional comment about the question itself.
+
+- `[advisor]` marks an existing suggested option separately from the author's recommendation.
+- Advice appears below the question/options and Details panel. `Alt+I` reveals longer explanations, actual file-read sources, and the profile used. Review shows a summary for each question.
+- Arrival of advice never changes selections, comments, focus, navigation, or submission. `Alt+A` applies an existing answer without advancing.
+- An outside alternative opens an editable question-comment draft. Existing comments are retained and the draft is appended; only saving adopts it. `Esc` discards the draft.
+- Initial analysis receives session evidence and the full form, not live edits. `Alt+R` takes a fresh snapshot including current answers and comments. Old advice remains visibly stale and cannot be applied while refreshing or after a failed refresh.
+- Submitting, cancelling, aborting, or disposing the form cancels analysis and ignores late results. You never have to wait for the advisor to submit.
+- Errors are shown without provider payloads or credentials. There are no automatic retries or model fallbacks. Valid recommendations from a partially invalid final response are retained; missing questions are marked unavailable.
+- Unaccepted reports are ephemeral and are not appended to the transcript or sent to the primary agent. Only user answers and explicitly saved comments enter the tool result.
+
+### Advisor settings
+
+Use `/supi-settings` → **Ask User Advisor**, or the normal SuPi config files (`~/.pi/agent/supi/config.json` globally, `.pi/supi/config.json` for the project):
+
+```json
+{
+  "ask-user-advisor": {
+    "provider": "openai",
+    "model": "gpt-6.1-sol",
+    "reasoning": "medium",
+    "maxToolTurns": 6,
+    "maxToolCalls": 20
+  }
+}
+```
+
+These are the defaults. The profile is fixed independently of the primary agent and cannot be overridden by tool-call parameters. Model lookup and authentication use Pi's registry; a missing/inaccessible model shows an unavailable status without choosing another model. Config changes apply on the next analysis/refresh.
+
+`maxToolTurns` accepts 0–30 and limits assistant turns executing tools. `maxToolCalls` accepts 0–100 and limits total executed calls. Zero disables inspection. After inspection is exhausted, one tool-free final completion is allowed. There is **no feature-level time limit**; provider/transport limits still apply.
+
+The advisor receives the **full text history of the current session branch**, including original messages from before Pi compaction, earlier decisions, system instructions as evidence, and tool calls/results. It does not use compaction or branch summaries as substitutes, impose character caps, or silently trim history to fit. Explicit context edits remain authoritative; other branches, binary attachment data, tool details, and private reasoning are not included. If full history exceeds the model's capacity, analysis fails visibly rather than compacting it.
+
+Its only tools are dedicated project-relative text read, literal search, and file listing. They do not inherit parent tools, execute shell commands, access the network, or write files. Reads/traversal/output are bounded; symlinks, hardlinked files, common credential/generated paths, and conservatively interpreted ancestor/nested Git ignore rules are excluded. Negations do not re-include excluded files; unsupported ignore syntax fails closed. These safeguards are not a general-purpose sandbox or a guarantee that ordinary source files contain no sensitive data.
 
 ## Model guidance configuration
 
@@ -212,6 +255,20 @@ const result = await openAskUserForm(questionnaire, {
 });
 ```
 
+API callers do **not** start the advisor implicitly. To opt in with the caller's Pi session context:
+
+```ts
+import { createAdvisorRunner, openAskUserForm } from "@mrclrchtr/supi-ask-user/api";
+
+const result = await openAskUserForm(questionnaire, {
+  ui: ctx.ui,
+  signal: ctx.signal,
+  advisor: createAdvisorRunner(ctx),
+});
+```
+
+The `advisor` option also accepts a custom `AdvisorRunner`. It must return one validated `AdvisorReport` for the supplied questionnaire, honor cancellation, and never mutate the supplied snapshots. It is invoked only after the shared form lock is acquired. The form owns cancellation and late-result suppression; API callers still own persistence and main-agent control flow.
+
 `openAskUserForm()` uses the shared form UI in Pi's editor area and one lock for all callers. Pass `overlay: true` to use a focused overlay instead. It returns structured answers or a cancel/abort result. It does not write to the session transcript or call `ctx.abort()`; the caller owns those actions. A caller can pass its own `AbortSignal`.
 
 The API exports `AskUserParamsSchema`, `normalizeQuestionnaire`, `AskUserValidationError`, `AskUserController`, and `openAskUserForm()`. It also exports types for the form UI, normalized questions, responses, outcomes, tool details, and cancel or abort interaction results. The package root is not an import surface. Use `/api` for the library or `/extension` for the Pi extension entrypoint.
@@ -220,6 +277,6 @@ The package ships TypeScript source. A standalone consumer must use a runtime or
 
 ## Privacy and security
 
-Pi stores the tool result in the session. The active model receives a text summary of answers and comments. This package does not send a separate network request or start an external process.
+Pi stores the tool result in the session. The active model receives a text summary of answers and comments. **The advisor makes separate model requests through your configured Pi provider**, sending the questionnaire, full uncompacted session text, and any local text it reads. Explicit refresh also sends the current answer/comment snapshot. This can incur additional provider charges. No external process is started; no unaccepted advisor report is added to the primary agent's context.
 
 Like all Pi extensions, this package runs with your user permissions. Review the package source before installation.

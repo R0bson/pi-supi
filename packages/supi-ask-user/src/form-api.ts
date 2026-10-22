@@ -1,3 +1,4 @@
+import type { AdvisorRunner } from "./advisor/types.ts";
 import { ActiveQuestionnaireLock } from "./session/lock.ts";
 import type { AskUserInteractionResult, AskUserOutcome, NormalizedQuestionnaire } from "./types.ts";
 import { runQuestionnaire } from "./ui/choose-renderer.ts";
@@ -37,6 +38,8 @@ export interface OpenAskUserFormOptions {
   ui: AskUserFormUi;
   /** Use an overlay instead of Pi's editor area. Defaults to false. */
   overlay?: boolean;
+  /** Opt in to independent asynchronous advice; the caller supplies the runner and session context. */
+  advisor?: AdvisorRunner;
   /** Signal owned by the caller. Abort closes the form and returns an abort result. */
   signal?: AbortSignal;
   /** Called after the shared lock is acquired and before the form opens. */
@@ -66,6 +69,7 @@ export async function openAskUserForm(
 
   let acquiredLock: ActiveQuestionnaireLock | undefined;
   let ownershipStarted = false;
+  let formComponent: { dispose?(): void } | undefined;
   try {
     const result = await runQuestionnaire(questionnaire, {
       ui: {
@@ -82,12 +86,15 @@ export async function openAskUserForm(
               acquiredLock = lock;
               ownershipStarted = true;
               options.onAcquire?.();
-              return factory(tui, theme, keybindings, done);
+              const component = factory(tui, theme, keybindings, done);
+              formComponent = component;
+              return component;
             },
             options.overlay ? { overlay: true } : undefined,
           ),
       },
       signal: options.signal,
+      advisor: options.advisor,
       onToggleToolsExpanded: options.onToggleToolsExpanded,
     });
     if (result === "unsupported") {
@@ -98,9 +105,13 @@ export async function openAskUserForm(
     return result;
   } finally {
     try {
-      if (ownershipStarted) options.onRelease?.();
+      formComponent?.dispose?.();
     } finally {
-      acquiredLock?.release();
+      try {
+        if (ownershipStarted) options.onRelease?.();
+      } finally {
+        acquiredLock?.release();
+      }
     }
   }
 }
