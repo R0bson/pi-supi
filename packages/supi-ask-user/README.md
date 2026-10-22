@@ -128,6 +128,12 @@ The form shows context-specific key hints at the bottom.
 
 On wide terminals, option details appear beside the choices. On narrow terminals, they appear below the choices. Ask User uses up to 85% of the terminal height, capped at 36 rows. If a form is taller than its inline height limit, Ask User keeps the focused row visible and shows a scroll position indicator.
 
+## Orca integration
+
+In Orca-managed panes (`ORCA_PANE_KEY` is set), Ask User preserves Orca's terminal title on both form open and close. It still sounds the attention bell and hides Pi's local working indicator while the form is open. Pi's native custom-UI prompt lifecycle lets Orca report needs-input without ending the active agent turn; closing the form lets Orca resume working or idle as appropriate.
+
+Orca's Pi status and title hooks must support `ui_prompt_start` / `ui_prompt_end`. Restart Pi after updating its runtime or Orca-managed hooks so the session loads the current integration. SuPi does not modify those generated hooks.
+
 ## Requirements, defaults, and limits
 
 - `ask_user` requires Pi's interactive TUI and custom component support. The tool is only registered in TUI sessions and is not offered to the model in RPC, JSON, or print mode.

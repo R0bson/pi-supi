@@ -5,10 +5,13 @@ import tabSpinner from "../../src/tab-spinner.ts";
 describe("tabSpinner extension", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("ORCA_PANE_KEY", "");
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it("shows spinner during agent_start and ✓ on agent_settled", async () => {
