@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createAdvisorRunner } from "../../advisor/runner.ts";
 import type { AskUserParamsSchema } from "../../schema.ts";
 import type { AskUserToolDetails } from "../../types.ts";
 import { executeAskUser } from "./execute.ts";
@@ -22,7 +23,7 @@ export function registerAskUserTool(
     promptGuidelines: surface.promptGuidelines,
     // biome-ignore lint/complexity/useMaxParams: pi ToolDefinition.execute signature
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      return executeAskUser(params, signal, ctx, pi, getSessionName());
+      return executeAskUser(params, signal, ctx, pi, getSessionName(), createAdvisorRunner(ctx));
     },
     renderCall: (args, theme) => renderAskUserCall(args, theme),
     renderResult: (result, options, theme, context) =>

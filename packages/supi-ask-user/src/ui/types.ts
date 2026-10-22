@@ -4,6 +4,7 @@ import type {
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { AdvisorRunner } from "../advisor/types.ts";
 import type { AskUserController } from "../session/controller.ts";
 import type {
   AskUserInteractionResult,
@@ -31,6 +32,7 @@ export interface AskUserUiContext {
 
 export interface RunQuestionnaireOptions {
   ui: AskUserUiContext;
+  advisor?: AdvisorRunner;
   signal?: AbortSignal;
   /** Callback to toggle tool output expansion (Ctrl+O passthrough). */
   onToggleToolsExpanded?: () => void;
@@ -45,6 +47,7 @@ export interface FormArgs {
   tui: TUI;
   theme: Theme;
   controller: AskUserController;
+  advisor?: AdvisorRunner;
   done: (result: AskUserOutcome | AskUserInteractionResult) => void;
   signal?: AbortSignal;
   keybindings: KeybindingsManager;

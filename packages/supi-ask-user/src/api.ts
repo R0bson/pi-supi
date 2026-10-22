@@ -1,3 +1,12 @@
+export type {
+  AdvisorConfig,
+  AdvisorEvidence,
+  AdvisorProfile,
+  AdvisorRecommendation,
+  AdvisorReport,
+  AdvisorRunner,
+} from "./advisor/api.ts";
+export { createAdvisorRunner, registerAdvisorSettings } from "./advisor/api.ts";
 export type { AskUserFormUi, OpenAskUserFormOptions } from "./form-api.ts";
 export { openAskUserForm } from "./form-api.ts";
 export { AskUserValidationError, normalizeQuestionnaire } from "./normalize.ts";

@@ -9,7 +9,10 @@ import {
   Key,
   matchesKey,
 } from "@earendil-works/pi-tui";
+import type { AdvisorRecommendation } from "../advisor/types.ts";
+import { FormAdvisor } from "../session/advisor.ts";
 import type { NormalizedChoiceQuestion } from "../types.ts";
+import { advisorText, matchesAdvisorAnswer } from "./form-advisor-render.ts";
 import { renderFormFrame } from "./form-render.ts";
 import { defaultChoiceRowIndex, type FormMode, focusForMode } from "./form-view.ts";
 import { calculateFormHeightLimit } from "./form-viewport.ts";
@@ -57,6 +60,7 @@ export class AskUserForm implements Component, Focusable {
   private returnToReviewAfterEdit: boolean = false;
   private pendingEsc: boolean = false;
   private readonly onAbort: () => void;
+  private readonly advisor?: FormAdvisor;
 
   constructor(private readonly args: FormArgs) {
     const { editor, handlesEscape } = createFormEditor(args, {
@@ -76,6 +80,19 @@ export class AskUserForm implements Component, Focusable {
       this.finish();
     };
     args.signal?.addEventListener("abort", this.onAbort);
+    if (args.advisor && !args.signal?.aborted) {
+      this.advisor = new FormAdvisor(
+        args.advisor,
+        args.controller.questionnaire,
+        (layoutChanged) => {
+          if (this.closed) return;
+          if (layoutChanged) this.refreshWithFocusReveal();
+          else this.refresh();
+        },
+      );
+      this.advisor.start();
+    }
+    if (args.signal?.aborted) this.onAbort();
   }
 
   render(width: number): string[] {
@@ -107,6 +124,7 @@ export class AskUserForm implements Component, Focusable {
       revealFocus: this.revealFocusedContent || dimensionsChanged,
       theme: this.args.theme,
       controller: this.args.controller,
+      advisor: this.advisor?.state,
       mode,
       focus,
       editor: this.editor,
@@ -133,6 +151,7 @@ export class AskUserForm implements Component, Focusable {
       return;
     }
 
+    if (this.handleAdvisorKey(data)) return;
     if (this.handleEscapeKey(data)) return;
     if (this.handleViewportKey(data)) return;
     if (this.handleNavigationKey(data)) return;
@@ -154,6 +173,50 @@ export class AskUserForm implements Component, Focusable {
     }
 
     this.handleChoiceKey(data);
+  }
+
+  private handleAdvisorKey(data: string): boolean {
+    if (!this.advisor || this.isCommentEditorMode()) return false;
+    if (matchesKey(data, Key.alt("i"))) {
+      this.advisor.toggleDetails();
+      return true;
+    }
+    if (matchesKey(data, Key.alt("r"))) {
+      this.syncTextAnswerFromEditor();
+      this.advisor.start(this.args.controller.outcome());
+      return true;
+    }
+    if (!matchesKey(data, Key.alt("a"))) return false;
+    if (this.baseMode === "review" || this.advisor.state.status !== "ready") return true;
+    const question = this.args.controller.currentQuestion;
+    const advice = this.advisor.state.report?.recommendations.find(
+      (item) => item.questionId === question.id,
+    );
+    if (advice && !matchesAdvisorAnswer(this.args.controller, advice))
+      this.applyAdvisorAdvice(advice);
+    return true;
+  }
+
+  private applyAdvisorAdvice(advice: AdvisorRecommendation): void {
+    const question = this.args.controller.currentQuestion;
+    if (advice.kind === "alternative") {
+      this.syncTextAnswerFromEditor();
+      const existing = this.args.controller.getQuestionComment(question.id);
+      this.openQuestionCommentEditor(question.id);
+      // Append into the draft, never replace or persist an existing comment without user approval.
+      this.setEditorText([existing, advisorText(advice.text)].filter(Boolean).join("\n\n"));
+    } else if (advice.kind === "text" && question.type === "text") {
+      this.args.controller.setTextAnswer(question.id, advisorText(advice.text));
+      this.setEditorText(this.args.controller.getTextAnswer(question.id));
+    } else if (advice.kind === "choice" && question.type === "choice") {
+      this.args.controller.setChoiceAnswer(question.id, advice.values);
+      // Enter selects the focused row for single choice. Align focus on explicit adoption,
+      // otherwise the next Enter would silently revert the newly applied answer.
+      const index = question.options.findIndex((option) => option.value === advice.values[0]);
+      if (index >= 0) this.choiceFocusIndex = index;
+      this.saveCurrentChoiceFocus();
+    }
+    this.refresh();
   }
 
   private handleEscapeKey(data: string): boolean {
@@ -268,6 +331,7 @@ export class AskUserForm implements Component, Focusable {
 
   dispose(): void {
     this.closed = true;
+    this.advisor?.dispose();
     this.args.signal?.removeEventListener("abort", this.onAbort);
   }
 
@@ -646,6 +710,7 @@ export class AskUserForm implements Component, Focusable {
   private finish(): void {
     if (this.closed) return;
     this.closed = true;
+    this.advisor?.dispose();
     this.args.signal?.removeEventListener("abort", this.onAbort);
     const interactionResult = this.args.controller.getInteractionResult();
     this.args.done(interactionResult ?? this.args.controller.outcome());

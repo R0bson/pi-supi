@@ -26,6 +26,7 @@ export async function runFormQuestionnaire(
         controller,
         done,
         signal: opts.signal,
+        advisor: opts.advisor,
         keybindings: kb,
         onToggleToolsExpanded: opts.onToggleToolsExpanded,
         editorFactory,

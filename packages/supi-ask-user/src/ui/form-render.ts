@@ -1,6 +1,8 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { type EditorComponent, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import type { FormAdvisorState } from "../session/advisor.ts";
 import type { AskUserController } from "../session/controller.ts";
+import { advisorStatus, renderAdvisorSection } from "./form-advisor-render.ts";
 import {
   renderChoiceScreen,
   renderEditorScreen,
@@ -32,6 +34,7 @@ export interface RenderFormFrameArgs {
   revealFocus: boolean;
   theme: Theme;
   controller: AskUserController;
+  advisor?: FormAdvisorState;
   mode: FormMode;
   focus: FocusTarget;
   editor: EditorComponent;
@@ -205,6 +208,7 @@ function renderFrameBody(args: RenderFormFrameArgs): RenderedFormSection {
   const section = renderActiveScreen(args);
   const focusedRange = offsetFormLineRange(section.focusedRange, lines.length);
   lines.push(...section.lines);
+  if (!isEditorMode(args.mode)) lines.push(...renderAdvisorSection(args));
   return { lines, focusedRange };
 }
 
@@ -220,7 +224,12 @@ function renderHeader(args: RenderFormFrameArgs): string[] {
   const { title } = args.controller.questionnaire;
   const titleText = args.theme.fg("accent", args.theme.bold(title ?? "ask_user"));
   const contextText = args.theme.fg("muted", headerContext(args));
-  return [formatSplitLine(titleText, contextText, args.width), renderProgressLine(args)];
+  const progress = renderProgressLine(args);
+  const status = args.advisor ? args.theme.fg("muted", advisorStatus(args.advisor)) : "";
+  return [
+    formatSplitLine(titleText, contextText, args.width),
+    status ? formatSplitLine(progress, status, args.width) : progress,
+  ];
 }
 
 function headerContext(args: RenderFormFrameArgs): string {

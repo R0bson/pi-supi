@@ -4,12 +4,14 @@ import {
   resolveToolPromptSurface,
 } from "@mrclrchtr/supi-core/prompt-surface";
 import { createSessionNameTracker } from "@mrclrchtr/supi-core/session";
+import { registerAdvisorSettings } from "./advisor/settings.ts";
 import { ASK_USER_PROMPT_SURFACE_DEFAULTS } from "./tool/ask_user/guidance.ts";
 import { registerAskUserTool } from "./tool/ask_user/register.ts";
 import { ASK_USER_TOOL_NAME } from "./tool/ask_user/spec.ts";
 
 export default function askUserExtension(pi: ExtensionAPI): void {
   const getSessionName = createSessionNameTracker(pi);
+  registerAdvisorSettings(pi);
 
   // Label ask_user tool results so they're visible and filterable in /tree.
   // Use a non-awaited setTimeout: the agent awaits our handler's return before

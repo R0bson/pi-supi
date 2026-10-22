@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AskUserResponse, NormalizedQuestion } from "../types.ts";
+import { advisorSuggestion, advisorText } from "./form-advisor-render.ts";
 import type { RenderFormFrameArgs } from "./form-render.ts";
 import {
   pushWrappedWithPrefix,
@@ -86,8 +87,32 @@ function renderReviewQuestionCard(
     });
   }
 
+  renderReviewAdvice(args, question, lines, prefix);
   lines.push(bottom);
   return lines.map((line) => truncateToWidth(line, width));
+}
+
+function renderReviewAdvice(
+  args: RenderFormFrameArgs,
+  question: NormalizedQuestion,
+  lines: string[],
+  prefix: string,
+): void {
+  const width = safeWidth(args.width);
+  if (!args.advisor?.report) return;
+  const advice = args.advisor.report.recommendations.find(
+    (item) => item.questionId === question.id,
+  );
+  const stale = args.advisor.status !== "ready" ? " (previous)" : "";
+  const append = (text: string) => pushWrappedWithPrefix({ lines, prefix, width, text });
+  append(
+    advice
+      ? `Advisor${stale}: ${advisorSuggestion(question, advice)}`
+      : "Advisor: advice unavailable",
+  );
+  if (!advice || !args.advisor.expanded) return;
+  append(`Why: ${advisorText(advice.rationale)}`);
+  if (advice.questionComment) append(`On the question: ${advisorText(advice.questionComment)}`);
 }
 
 function renderSubmitCard(args: RenderFormFrameArgs, focused: boolean): string[] {
