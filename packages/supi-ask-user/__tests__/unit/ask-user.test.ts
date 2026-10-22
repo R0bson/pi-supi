@@ -102,11 +102,58 @@ describe("ask_user tool", () => {
     expect(tool.label).toBe("Ask User");
     expect(tool).toMatchObject({ exposure: "model-only" });
     expect((tool as { executionMode?: string }).executionMode).toBe("sequential");
-    expect(tool.description).toContain("focused user decision blocks progress");
+    expect(tool.description).toContain("related user decisions that block progress");
+    expect(tool.description).toContain("Complete available investigation first");
+    expect(tool.description).toContain("not whether to perform routine verification");
     expect(tool.description).toContain("Not for status updates or broad surveys");
     expect(tool.description).not.toMatch(/2,000 lines|50 KB/i);
-    expect(tool.promptSnippet).toBe("request a focused blocking user decision");
+    expect(tool.promptSnippet).toBe("collect related blocking user decisions in one form");
+    expect(tool.promptGuidelines?.join(" ")).toContain("not one compound question");
+    expect(tool.promptGuidelines?.join(" ")).toContain("when answers can differ by item");
+    const parameters = tool.parameters as {
+      properties: { questions: { description: string } };
+    };
+    expect(parameters.properties.questions.description).toContain(
+      "one question per independently answerable choice",
+    );
+    expect(parameters.properties.questions.description).toContain(
+      "A shared policy that applies equally to all items can use one question",
+    );
     expect(tool.promptGuidelines?.every((guideline) => guideline.includes("ask_user"))).toBe(true);
+  });
+
+  it("exposes self-contained context guidance for both question types and options", async () => {
+    const pi = await setupTuiExtension();
+    const tool = getTool(pi, "ask_user");
+    expect(tool.description).toContain("assume domain knowledge");
+    expect(tool.description).toContain("not familiarity with the problem, code");
+    expect(tool.promptGuidelines?.join(" ")).toContain("Do not rely on prior chat or tool output");
+    expect(tool.promptGuidelines?.join(" ")).toContain("why the recommended option fits");
+    const parameters = tool.parameters as {
+      properties: {
+        intro: { description: string };
+        questions: { items: { anyOf: { properties: Record<string, unknown> }[] } };
+      };
+    };
+    expect(parameters.properties.intro.description).toContain("Shared background");
+    const branches = parameters.properties.questions.items.anyOf;
+    expect(branches).toHaveLength(2);
+    for (const branch of branches) {
+      expect(branch.properties.prompt).toMatchObject({
+        description: expect.stringContaining("specific problem and current behavior"),
+      });
+      expect(branch.properties.prompt).toMatchObject({
+        description: expect.stringContaining("relevant findings or uncertainty"),
+      });
+    }
+    expect(branches[0]?.properties.options).toMatchObject({
+      items: {
+        properties: {
+          description: { description: expect.stringContaining("main consequence or trade-off") },
+          details: { description: expect.stringContaining("not only here") },
+        },
+      },
+    });
   });
 
   it("registers a session_start handler for configurable prompt-surface resolution", () => {
