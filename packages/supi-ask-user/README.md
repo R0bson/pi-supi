@@ -8,11 +8,11 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/mrclrchtr/supi)](https://github.com/mrclrchtr/supi/stargazers) [![npm downloads](https://img.shields.io/npm/dm/@mrclrchtr/supi-ask-user)](https://www.npmjs.com/package/@mrclrchtr/supi-ask-user)
 
-Adds `ask_user`, a structured decision-form tool for the [Pi coding agent](https://github.com/earendil-works/pi). The agent can stop at one decision, show a keyboard form, and continue with structured answers.
+Adds `ask_user`, a structured decision-form tool for the [Pi coding agent](https://github.com/earendil-works/pi). The agent can collect related blocking decisions in one keyboard form and continue with structured answers.
 
 ## What it adds
 
-- **One focused decision** — one blocking form contains 1-10 related questions.
+- **One focused form** — one blocking form contains 1-10 related questions, with separate questions for independently answerable choices.
 - **Choice and text questions** — choose one option, choose multiple options, or enter free-form text.
 - **Recommendations** — the agent can select or prefill a suggested answer. You can change it.
 - **Option context** — focused options can show descriptions, trade-offs, consequences, or code samples.
@@ -29,11 +29,26 @@ You can tell Pi when you want a structured handoff:
 - “Show the trade-offs beside each migration option before I choose.”
 - “Ask me which findings to fix, and let me comment on individual choices.”
 
-The agent is also guided to use `ask_user` only after inspecting what it can inspect itself—not for status updates, broad surveys, or facts it can determine from the repository.
+The agent is guided to complete available investigation first and ask about authorization or trade-offs—not whether to perform routine verification, provide status updates, or gather facts it can determine from the repository.
+
+Related questions belong in one call, not one compound question. If you could choose different actions for two findings, each finding gets its own question. A shared policy that applies equally to both can remain one question. Options should not bundle combinations or defer already-known choices to a later form.
+
+## Context for informed decisions
+
+Assume the operator understands the domain, but has not followed the agent's investigation and does not know the specific problem, relevant code, or proposed solution. The form must be understandable without reading prior chat or tool output.
+
+- **Form intro:** shared situation, goal, and relevant constraints.
+- **Question prompt:** the specific problem, current behavior, why it matters, relevant findings and uncertainty, then the decision needed. Explain what referenced code does rather than listing symbols or paths without explanation.
+- **Option description:** what the option changes and its main consequence or trade-off. Explain why the recommendation fits the situation.
+- **Option details:** supporting rationale, examples, or code snippets. Do not hide essential problem context here; details are shown only when the option is focused.
+
+Keep explanations decision-relevant: do not teach domain basics, dump the investigation transcript, or describe an unverified suspicion as a confirmed bug.
+
+For example, instead of asking “Fix summary handling?”, explain: “The advisor uses session history to prepare advice. Source inspection suggests it may omit summaries that preserve earlier work after history is shortened or branched; this could leave advice without relevant context. This has not been reproduced. May I fix the omission if verification confirms it?” An option such as “Verify and fix if confirmed” should state that it changes which history the advisor receives and adds regression coverage, rather than promising a fix to an unconfirmed bug.
 
 ## How it works
 
-1. The agent calls `ask_user` with one focused decision and related questions.
+1. The agent calls `ask_user` with related blocking decisions, separated into independently answerable questions.
 2. Pi opens a keyboard-driven form and pauses the agent.
 3. You answer, comment, or deliberately mark a question unanswered.
 4. The review screen lets you edit the form before submitting.

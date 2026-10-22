@@ -8,13 +8,13 @@ const OptionSchema = Type.Object({
   label: Type.String({ description: "Displayed label" }),
   description: Type.Optional(
     Type.String({
-      description: "Optional helper text",
+      description: "What this option does and its main consequence or trade-off.",
     }),
   ),
   details: Type.Optional(
     Type.String({
       description:
-        "Extended details shown when focused — trade-offs, code snippets, or consequences",
+        "Supporting explanation shown when focused: rationale, examples, or code snippets. Keep facts needed to understand the question in intro/prompt, not only here.",
     }),
   ),
 });
@@ -28,11 +28,15 @@ const QuestionCount = {
   maxItems: ASK_USER_LIMITS.maxQuestions,
 } as const;
 
+/** Shared wording keeps choice and text prompts equally self-contained. */
+const questionPromptDescription =
+  "Explain the specific problem and current behavior, why it matters, relevant findings or uncertainty, then ask the decision. Explain code references in plain language; do not assume the user saw prior chat or tool output. Shared background belongs in intro.";
+
 const ChoiceQuestionSchema = Type.Object({
   type: Type.Literal("choice"),
   id: Type.String({ description: "Unique question id" }),
   header: Type.String({ description: "Short label" }),
-  prompt: Type.String({ description: "Question text" }),
+  prompt: Type.String({ description: questionPromptDescription }),
   options: Type.Array(OptionSchema, {
     description: "Each option requires `label` (shown text) and a unique `value` (returned id).",
     ...ChoiceOptionCount,
@@ -54,7 +58,7 @@ const TextQuestionSchema = Type.Object({
   type: Type.Literal("text"),
   id: Type.String({ description: "Unique question id" }),
   header: Type.String({ description: "Short label" }),
-  prompt: Type.String({ description: "Question text" }),
+  prompt: Type.String({ description: questionPromptDescription }),
   recommendation: Type.Optional(Type.String({ description: "Suggested text" })),
   placeholder: Type.Optional(Type.String({ description: "Editor placeholder" })),
 });
@@ -65,11 +69,13 @@ export const AskUserParamsSchema = Type.Object({
   title: Type.Optional(Type.String({ description: "Optional title" })),
   intro: Type.Optional(
     Type.String({
-      description: "Optional context",
+      description:
+        "Shared background needed to understand this form: situation, goal, and relevant constraints. Assume domain knowledge, but no familiarity with the problem, code, investigation, or proposed solution. Keep question-specific context in each prompt.",
     }),
   ),
   questions: Type.Array(QuestionSchema, {
-    description: "1-10 related questions for one decision",
+    description:
+      "Related questions in one form. Use one question per independently answerable choice: separate items when the user may answer differently for each. A shared policy that applies equally to all items can use one question.",
     ...QuestionCount,
   }),
 });
